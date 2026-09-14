@@ -30,7 +30,7 @@ The budgets below are defaults, not performance promises. A governing spec may o
 | **F0 — static/preflight** | catch impossible/stale assumptions | seconds | none | version/flag presence, config shape, schema parse, file/path checks, dependency availability |
 | **F1 — micro smoke** | prove the smallest callable seam works | ~1 minute | local only where possible; at most one tiny paid call when unavoidable | load model + one response, Pi RPC handshake, gateway allow/deny with fake upstream, one LSP diagnostic |
 | **F2 — contract fixture** | prove semantics on a small deterministic fixture | a few minutes | bounded; no broad benchmark | 3–5 compression cases, one LCM buried fact, one Mnemosyne durable/transient/untrusted fixture, one malicious repo fixture |
-| **F3 — milestone acceptance** | prove the selected implementation under representative conditions | only after F0–F2 pass | bounded by the milestone spec | three M0 baseline tasks, 10–20 utility examples, M2 security suite, Pi P1–P9 |
+| **F3 — milestone acceptance** | prove the selected implementation under representative conditions | only after F0–F2 pass | bounded by the milestone spec | three M0 baseline tasks, one real context-packet pilot, M2 security suite, Pi P1–P9 |
 | **F4 — soak / sustained** | expose thermal, memory, leak and long-session defects | only when the component already passes quality/correctness | no exploration during soak | 20-minute llama.cpp Hermes-shaped replay; repeated worker/replay check |
 
 ### Cost rule
@@ -49,8 +49,8 @@ Example:
 
 ```text
 Hypothesis: Granite Q6 can produce schema-valid context packets without omitting sentinel evidence.
-Cheapest falsifier: 3 fixed artifacts with required sentinel facts + JSON schema validation.
-Promotion signal: 3/3 schema-valid; 0 required facts omitted -> run the larger utility smoke, then sustained soak.
+Cheapest falsifier: 4 fixed utility cases with required sentinel facts + schema validation.
+Promotion signal: all 4 usable; 0 critical facts omitted -> sustained replay.
 ```
 
 ## Rabbit-hole circuit breaker
@@ -95,12 +95,11 @@ Run in this order:
 
 1. model provenance + llama.cpp support check;
 2. load/memory + one structured response;
-3. **3–5 example micro-quality smoke** with sentinel evidence and schema validation;
-4. 10–20 example utility smoke only if needed to resolve uncertainty;
-5. 20-minute sustained replay only after quality/correctness passes;
-6. one real artifact-class token-saving pilot.
+3. **exactly four micro-quality cases** with sentinel evidence/schema validation;
+4. 20-minute sustained replay only after quality/correctness passes;
+5. one real artifact-class token-saving pilot.
 
-A model that fails evidence preservation is rejected before thermal/throughput soak.
+A model that fails evidence preservation is rejected before thermal/throughput soak. A model that passes admission but fails the real artifact-class pilot stays out of the production request path.
 
 ### M2 — context, memory and egress
 
