@@ -1,197 +1,164 @@
-# Staged Roadmap
+# Execution Roadmap
 
 Status: `specified`
 
-Goal: harvest low-risk savings first, prove each layer, and postpone complex routing/training until simpler controls have exhausted their value.
+Goal: harvest measurable value early, keep the number of active decisions small, and stop adding architecture once the operating requirement is met.
 
-## Phase 0 — Establish truth before tuning
+## Operating rules
 
-**Value:** prevents version drift and invalid specs. **Risk:** minimal.
-
-- [ ] Record Apple hardware: chip, unified memory, macOS, thermal/power mode.
-- [ ] Record exact Hermes version + commit/package source.
-- [ ] Record exact Pi version + package source.
-- [ ] Record LCM package/plugin version and active configuration.
-- [ ] Record Mnemosyne version, integration path, embedding backend, capture/retrieval settings.
-- [ ] Record exact llama.cpp version/commit and Metal build flags.
-- [ ] Snapshot current Hermes configuration with secrets removed.
-- [ ] Define one reversible baseline task corpus: research, tool-heavy, coding, long-context, memory-recall.
-- [ ] Capture baseline: input/output/cache tokens, wall time, retries, task success, provider cost.
-
-**Gate P0:** no implementation spec may target Hermes/Pi until the compatibility matrix exists.
+- Only **one milestone is active** at a time.
+- Only **one local-model path is qualified** at a time.
+- Prefer configuration/adapters over Hermes/Pi core changes.
+- Every lossy transformation keeps recoverable provenance to raw evidence.
+- Security-critical policy is deterministic and fail-closed.
+- Routing/training is optional and starts only if telemetry proves an economic gap.
 
 ---
 
-## Phase 1 — Low-hanging token diet
+## M0 — Baseline + deterministic token diet
 
-**Value:** immediate paid-token reduction without learned routing. **Risk:** low.
+**Outcome:** know the exact stack and remove obvious paid-token waste before adding another model or subsystem.
 
-- [ ] Identify static/repeated prompt material and deduplicate it.
-- [ ] Measure provider prompt-cache reuse; stabilize prefix ordering where practical.
-- [ ] Cap and normalize tool-result payloads before they enter the main model context.
-- [ ] Blob/hash oversized artifacts and pass compact references plus selective excerpts.
-- [ ] Remove redundant tool schemas/instructions from turns where they are unavailable or unnecessary, if Hermes' current extension surface safely supports it.
-- [ ] Add per-turn telemetry for `raw_context_bytes -> sent_context_tokens`.
+- [ ] Record Apple chip, 128 GB unified memory, macOS/power mode and the **28 GB local-inference envelope**.
+- [ ] Pin Hermes, Pi, LCM, Mnemosyne and llama.cpp versions/commits.
+- [ ] Snapshot active Hermes configuration with secrets removed.
+- [ ] Capture a very small representative baseline: one tool-heavy task, one long-context/memory task and one coding task.
+- [ ] Record external input/output/cache tokens, wall time, retries and success.
+- [ ] Remove repeated/static prompt material where safe.
+- [ ] Cap/normalize oversized tool output and retain large raw artifacts by path/hash.
+- [ ] Stabilize reusable prompt prefixes where practical for provider cache reuse.
 
-**Acceptance:** lower external input-token cost on matched tasks with no materially meaningful task-success regression.
+**Done when:** baseline is reproducible and at least the obvious deterministic context waste has been removed or explicitly found negligible.
 
-**Rollback:** configuration-only or isolated adapter disable.
-
----
-
-## Phase 2 — Local utility model qualification
-
-**Value:** moves high-volume transformation work off paid providers. **Risk:** low-medium because summaries can omit evidence.
-
-Keep the decision surface intentionally small. Follow [`docs/specs/local-model-admission.md`](specs/local-model-admission.md).
-
-Failure-directed order:
-
-1. `empero-ai/Qwen3.8-9B-Distill` Q6_K — primary.
-2. Same model Q5_K_M — only if Q6 quality passes but sustained operation is limiting.
-3. `google/gemma-4-E4B-it` — only if the Qwen distill fails on efficiency/runtime; its PLE/on-device architecture makes it the targeted efficiency challenger.
-4. `Qwen/Qwen3.5-9B` — only if the distill fails on utility quality; this is the conservative quality fallback.
-
-Only **one model path is active at a time**. Runtime is llama.cpp/Metal only.
-
-Qualification workloads are deliberately compact:
-
-- [ ] compiler/test/log distillation;
-- [ ] large tool-output -> typed context packet;
-- [ ] durable-memory candidate extraction;
-- [ ] code/LSP diagnostic summarisation;
-- [ ] schema-constrained structured output.
-
-Measure only what changes the decision:
-
-- [ ] load/TTFT;
-- [ ] prompt and decode tok/s;
-- [ ] total inference memory and swap delta at 16K context;
-- [ ] one sustained 20-minute Hermes-shaped replay;
-- [ ] critical evidence retention;
-- [ ] schema validity.
-
-**Gate P2:** promote the first model+quant configuration that fits the 28 GB inference envelope, remains stable through the sustained replay, and passes the compact utility-quality smoke test. Do not continue benchmarking for marginal gains after the gate is satisfied.
+**Stop rule:** do not build local-model preprocessing until the baseline exists; otherwise savings cannot be attributed.
 
 ---
 
-## Phase 3 — Recoverable local context distillation
+## M1 — One resident local utility path + recoverable context packets
 
-**Value:** likely the highest local-model cost-saving opportunity. **Risk:** medium.
+**Outcome:** move high-volume, recoverable transformations off paid providers with the smallest possible model-selection exercise.
 
-- [ ] Define `context-packet.schema.json` with provenance to original artifacts.
-- [ ] Keep raw evidence separately addressable by path/hash; never make the summary the only copy.
-- [ ] Add local distillation only for oversized tool/artifact classes with deterministic fallback to raw retrieval.
-- [ ] Validate summaries against task-native checks where possible.
-- [ ] Measure cloud-token reduction and retrieval-backtracking frequency.
+Follow [`docs/specs/local-model-admission.md`](specs/local-model-admission.md).
 
-**Gate P3:** promote per artifact class, not globally. A class fails if omitted evidence materially increases retries/errors.
+Decision tree:
+
+1. `empero-ai/Qwen3.8-9B-Distill` Q6_K.
+2. Same model Q5_K_M only if Q6 quality passes but sustained operation is limiting.
+3. Gemma 4 E4B only if Empero fails mainly on efficiency/runtime.
+4. Official Qwen3.5-9B only if Empero fails mainly on utility quality.
+
+The original 2–4B model fleet remains a **candidate shelf**, not an active benchmark pool. See [`docs/research/stacked-local-models.md`](research/stacked-local-models.md). A tiny specialist is admitted later only if production telemetry exposes a concrete recurring job where it materially beats the resident model end-to-end.
+
+Qualification is limited to:
+
+- [ ] memory/runtime/throughput at 16K context in llama.cpp/Metal;
+- [ ] one 20-minute sustained Hermes-shaped replay;
+- [ ] 10–20 utility examples: tool/log compression, structured extraction, memory-candidate extraction and code/LSP summary.
+
+Once a model passes, **stop model selection** and implement one `context-packet` contract:
+
+- [ ] typed compact result;
+- [ ] source path/hash/provenance;
+- [ ] selected exact excerpts where needed;
+- [ ] deterministic fallback to raw evidence;
+- [ ] per-artifact promotion, not global summarization.
+
+**Done when:** one local configuration is operationally stable and at least one real artifact class shows material external-token reduction without material task-quality regression.
 
 ---
 
-## Phase 4 — Context and memory ownership
+## M2 — Context/memory ownership + trust/egress controls
 
-**Value:** prevents duplicate context work and memory inflation. **Risk:** medium.
+**Outcome:** eliminate duplicate context work and establish the security boundary before deeper autonomy.
 
-- [ ] Specify LCM ownership: current-session context selection, compaction, recoverable hierarchy.
-- [ ] Specify Mnemosyne ownership: curated cross-session durable memory only.
+Treat these as one architecture milestone because the same provenance/trust metadata feeds both context selection and egress policy.
+
+### Context and memory
+
+- [ ] LCM owns current-session context selection/compaction/recovery.
+- [ ] Mnemosyne owns curated cross-session durable memory only.
 - [ ] Prohibit recursive/duplicate summarisation paths.
-- [ ] Use local embeddings for sensitive memory unless an explicit egress policy permits otherwise.
-- [ ] Add memory-admission criteria, provenance, expiry/review rules.
-- [ ] Cap retrieval budget per turn and measure useful-recall precision.
-- [ ] Test exact-detail recovery after multiple compactions.
+- [ ] Use local/private embeddings for sensitive memory unless policy explicitly permits egress.
+- [ ] Define memory admission, provenance, expiry/review and per-turn retrieval budget.
+- [ ] Test exact-detail recovery after compaction.
 
-**Gate P4:** LCM/Mnemosyne must beat a simpler baseline on accepted-task token economics and recall quality; either layer may be rejected independently.
+### Trust and egress
 
----
+- [ ] Label provenance/trust for user, repo, web, tool, memory and generated content.
+- [ ] Define deterministic provider/data eligibility rules.
+- [ ] Detect known secrets deterministically first; reversible local substitution where useful.
+- [ ] Treat model-based injection/PII/security scores as advisory only.
+- [ ] Independently authorize destructive/high-risk actions.
+- [ ] Test prompt injection, memory poisoning and exfiltration paths.
 
-## Phase 5 — Deterministic egress and trust boundary
+**Done when:** context/memory authorities are unambiguous, required controls fail closed, and the simplified stack beats or matches the pre-M2 baseline on accepted-task economics and recall.
 
-**Value:** privacy/security improvement and safer external-model use. **Risk:** medium-high; must be fail-closed.
-
-- [ ] Define provenance/trust labels for user, repo, web, tool, memory, generated content.
-- [ ] Define deterministic provider eligibility and data-egress rules.
-- [ ] Detect known secrets using deterministic mechanisms first.
-- [ ] Tokenize/redact reversible sensitive values locally where useful.
-- [ ] Treat local prompt-injection/PII classifiers as advisory signals only.
-- [ ] Require independent authorization for destructive/high-risk tool actions.
-- [ ] Red-team memory poisoning, indirect injection, exfiltration, and policy-bypass paths.
-
-**Gate P5:** mandatory controls must fail closed; Hermes middleware alone is not sufficient if its failure semantics are fail-open.
+**Simplification rule:** if either LCM or Mnemosyne fails to add measurable value under this ownership contract, remove that layer rather than tuning indefinitely.
 
 ---
 
-## Phase 6 — Routing telemetry before routing intelligence
+## M3 — Hermes -> contained Pi + LSP execution
 
-**Value:** creates evidence without production risk. **Risk:** low.
+**Outcome:** add coding capability only after context and trust boundaries are stable.
 
-- [ ] Define privacy-minimized routing-decision record schema.
-- [ ] Record deterministic eligibility decisions.
-- [ ] Record actual model/provider/task outcomes and economics.
-- [ ] Add shadow predictions from the selected local utility model only after telemetry is stable.
-- [ ] Measure routing regret/opportunity before training anything.
-
-**Gate P6:** if deterministic/simple routing leaves little recoverable economic regret, STOP. Do not train ModernBERT.
-
----
-
-## Phase 7 — Learned routing experiment (conditional)
-
-Run only if P6 proves an opportunity.
-
-- [ ] Baseline: rules + linear/logistic classifier over compact features/embeddings.
-- [ ] Challenger: nearest-neighbour/semantic routing.
-- [ ] Challenger: ModernBERT multi-head classifier.
-- [ ] Optional: local generative router only if the discriminative approaches fail the economic objective.
-- [ ] Use mission/session/repository/time-separated holdouts.
-- [ ] Calibrate abstention/uncertainty.
-- [ ] Compare cost per accepted task, not classification accuracy alone.
-
-**Gate P7:** promote only if the learned layer materially beats the simple baseline after its own latency/compute/retry costs.
-
----
-
-## Phase 8 — Pi coding worker + LSP
-
-**Value:** higher-quality edits with objective verification. **Risk:** high because this crosses execution boundaries.
-
-- [ ] Pin Pi version and supported integration surface.
-- [ ] Define Hermes -> Pi typed task contract.
-- [ ] Run Pi in a disposable worktree/container/sandbox with least privilege.
-- [ ] Deny direct production-repo mutation in unattended mode.
-- [ ] Integrate LSP symbol lookup, diagnostics, rename/refactor, and post-edit diagnostics.
-- [ ] Run compiler/tests/static checks as objective acceptance signals.
+- [ ] Pin Pi version/integration surface.
+- [ ] Define one typed Hermes -> Pi task/result contract.
+- [ ] Run Pi in a disposable worktree plus OS/container sandbox with least privilege.
+- [ ] Prevent unattended direct mutation of the canonical repo.
+- [ ] Add only high-value LSP operations: symbol lookup, references, diagnostics, rename/refactor where supported.
+- [ ] Verify edits with compiler/tests/static checks and post-edit LSP diagnostics.
 - [ ] Return structured diff + diagnostics + test evidence to Hermes.
 
-**Gate P8:** no unattended promotion until containment, rollback, replay, and malicious-repo tests pass.
+**Done when:** containment, rollback, replay and malicious-repo tests pass and a coding task can execute end-to-end without widening Hermes' authority unnecessarily.
 
 ---
 
-## Phase 9 — Documentation/site renderer
+## M4 — Optional routing intelligence
 
-Can begin early but MUST NOT block optimisation experiments.
+**Outcome:** do nothing unless real telemetry proves that model-selection mistakes are costing enough to matter.
 
-- [ ] Markdown remains the only authored prose source of truth.
-- [ ] Render Markdown client-side or at build time with pinned dependencies.
-- [ ] Render fenced Mermaid blocks using a pinned Mermaid version and strict security mode.
-- [ ] Sanitize rendered HTML and enforce a restrictive CSP.
-- [ ] Use a semantic, accessible diagram palette with textual labels.
-- [ ] Add CI link/diagram/render validation.
+Always collect lightweight decision telemetry during M0–M3:
+
+- eligible model/provider set;
+- chosen path;
+- task/workflow stage;
+- tokens/cache/latency/cost;
+- retry/escalation;
+- objective acceptance outcome where available.
+
+Only if analysis shows material recoverable routing regret:
+
+1. try deterministic rules/simple scores first;
+2. then a linear/embedding baseline;
+3. only then consider ModernBERT or a learned harness-native router.
+
+A local generative router or multi-model committee is not a default milestone.
+
+**Done when:** either telemetry shows routing is not worth pursuing (**valid success state**) or a simple router materially improves cost per accepted task.
 
 ---
 
-# Early harvest order
+## Documentation and HTML rendering — continuous, non-blocking
+
+Markdown remains the only authored source of truth. Add the HTML/Mermaid renderer incrementally when useful, but it MUST NOT gate M0–M3.
+
+Required properties when implemented:
+
+- pinned local Markdown/Mermaid/sanitizer dependencies;
+- strict Mermaid security mode and restrictive CSP;
+- accessible semantic diagram palette;
+- no duplicated prose between Markdown and HTML.
+
+---
+
+# Minimal execution order
 
 ```text
-P0 truth
- -> P1 prompt/tool-result diet
- -> P2 one local model qualification
- -> P3 recoverable local distillation
- -> P4 LCM/Mnemosyne ownership
- -> P5 egress/security
- -> P6 telemetry
- -> P7 learned routing only if justified
- -> P8 Pi/LSP worker
+M0 baseline + token diet
+  -> M1 one local model + context packets
+  -> M2 context/memory + security
+  -> M3 Pi/LSP
+  -> M4 routing only if telemetry proves value
 ```
 
-This ordering intentionally puts **routing late** and keeps the local-model decision cheap. The first dollars/tokens should be saved through deterministic context hygiene and local, recoverable preprocessing.
+This is the complete default roadmap. New phases/components require an explicit reason that cannot be satisfied inside one of these milestones.
