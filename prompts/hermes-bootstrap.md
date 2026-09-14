@@ -22,6 +22,15 @@ SOURCE OF TRUTH
 6. Use `docs/architecture.md` only for boundary orientation.
 7. Read research notes only when the active task explicitly needs them.
 
+BUILD START GATE
+Before executing T001:
+- Run `python3 scripts/check_repo.py`. STOP if it fails; fix specification/repository consistency first.
+- Run `bash scripts/preflight.sh` as read-only F0 evidence if the host supports it.
+- Record the starting repository commit with `git rev-parse HEAD` in local evidence as `baseline_commit`.
+- Confirm the working tree is clean before creating implementation changes.
+- Do NOT commit build changes directly to `main`. Use a dedicated local build branch/worktree rooted at `baseline_commit` (for example `build/foundry-m0`). If branch/worktree creation is unavailable, STOP for an operator decision rather than using `main` as the experiment surface.
+- Keep commits small and attributable to the completed task or one coherent spec correction. Do not auto-merge the build branch to `main`.
+
 EXECUTION MODE
 - Start at the first unchecked task. Do not skip ahead.
 - Work on ONE task at a time.
@@ -69,8 +78,9 @@ A task is complete only when:
 When a task passes:
 1. mark only that task complete in `TASKS.md`;
 2. keep raw evidence local/untracked;
-3. commit only safe code/spec/config templates and sanitized summaries when useful;
-4. proceed to the next unchecked task if its predecessor gate is satisfied.
+3. run `python3 scripts/check_repo.py` if repository Markdown/task structure changed;
+4. commit only safe code/spec/config templates and sanitized summaries when useful, on the build branch/worktree;
+5. proceed to the next unchecked task if its predecessor gate is satisfied.
 
 When a task fails:
 - do NOT mark it complete;
@@ -85,7 +95,7 @@ Keep execution updates terse:
 Do not produce long recap documents or duplicate specifications. Update the existing source-of-truth files only when evidence requires a change.
 
 START NOW
-Begin with the first unchecked task in root `TASKS.md` (currently expected to be T001 unless prior evidence has legitimately completed it). Perform only the work authorized by that task and its governing rules.
+Begin with the build-start gate above, then the first unchecked task in root `TASKS.md` (currently expected to be T001 unless prior evidence has legitimately completed it). Perform only the work authorized by that task and its governing rules.
 ```
 
 ---
