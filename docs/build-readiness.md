@@ -14,10 +14,11 @@ These are research anchors, not substitutes for T001–T004 local version captur
 |---|---|---|
 | Hermes | stable `v0.21.2` / `v2026.9.11` | supported reference; local install MUST be pinned before implementation |
 | Pi | stable `v0.85.1` | use documented RPC/CLI/custom-provider surface, not internal `AgentHarness` migration APIs |
-| hermes-lcm | `v1.0.0-rc.1` line documented upstream | pre-release: pin exact commit + back up `lcm.db` before any change |
-| Mnemosyne core | latest published core line observed as `3.15.1` | pin installed core and wrapper independently |
-| Mnemosyne Hermes wrapper | source manifest currently reports `0.6.0` | publication/version MUST be verified locally; do not infer from git alone |
+| hermes-lcm | latest published GitHub stable release `v0.20.0`; current source tree also documents a `v1.0.0-rc.1` line | do not infer the installed line from GitHub `latest`; pin exact installed version/commit and back up `lcm.db` before any change |
+| Mnemosyne | latest GitHub Hermes-integration release observed as `v0.7.0`; core package and Hermes wrapper versioning are separate | T004 MUST record installed `mnemosyne-memory` and `mnemosyne-hermes` metadata independently; do not use the repo tag as a core-version proxy |
 | Granite 4.2-8B GGUF | official IBM GGUF | Q6_K is ~7.22 GB; first local qualification candidate |
+
+Freshness check performed 2026-09-14 before build handoff: Hermes and Pi stable release references above remain current. Upstream references may move after handoff; installed local versions remain the implementation authority for this build.
 
 ## Stable seams selected now
 
@@ -83,28 +84,40 @@ Weighted by:
 
 M4 is optional and is not included in required-stack readiness. A low M4 operational score is acceptable because `routing not worth building` is a valid successful outcome.
 
-## Why the scores increased
+## Why the scores are not higher before execution
 
-The previous largest ambiguities have been removed:
+The remaining uncertainty is operational, not architectural:
 
-- M2 now has a single context engine/single memory-provider contract, explicit memory-admission rules, deterministic red-team cases and a concrete fail-closed egress seam using Hermes' supported custom-provider capability.
-- M3 now uses Pi's documented RPC/custom-provider surfaces rather than evolving internal harness APIs, disables project-local resources by default, specifies whole-process OCI containment and gateway-only model access, requires process supervision, and stages LSP read-only before mutation.
+- installed Hermes/LCM/Mnemosyne/Pi versions may differ from current research anchors;
+- Granite's sustained Metal behavior must be measured on the target Mac;
+- LCM/Mnemosyne ownership and recall behavior must be proven in the installed configuration;
+- the gateway must survive negative/bypass tests;
+- OCI containment, Pi RPC, LSP and replay must work end-to-end on the host.
+
+More broad research does not resolve those uncertainties as efficiently as the existing local evidence gates.
+
+## Hardening added before build handoff
+
+- M2 has a single context-engine/single memory-provider contract, explicit memory-admission rules, deterministic red-team cases and a concrete fail-closed egress seam using Hermes' supported custom-provider capability.
+- M3 uses Pi's documented RPC/custom-provider surfaces rather than evolving internal harness APIs, disables project-local resources by default, specifies whole-process OCI containment and gateway-only model access, requires process supervision, and stages LSP read-only before mutation.
 - `TASKS.md` maps M0–M3 work to exact evidence paths and `Stop if` conditions, so an execution agent should not need to invent architecture while working.
-- `AGENTS.md` makes stable-public-surface and stop-condition behavior normative for agents.
-- `docs/spec-lite.md` now uses one root execution ledger instead of duplicating per-feature task documents.
-- `docs/architecture.md` presents the same trust/data-flow boundaries visually without creating another source of implementation authority.
+- `docs/testing-strategy.md` enforces cheapest-falsifier-first testing and a bounded retry/circuit-breaker rule.
+- `scripts/check_repo.py` statically checks required source-of-truth files, local Markdown links, task-ID uniqueness and accidental tracking of evidence/model/credential artifacts.
+- `AGENTS.md` and `prompts/hermes-bootstrap.md` require a recorded baseline commit plus a dedicated build branch/worktree; self-build work does not go directly to `main`.
+- `docs/evidence-policy.md` keeps raw runtime evidence local/untracked in this public repository.
 
 ## What raises operational confidence fastest
 
 Do **not** add more broad research. Execute these evidence gates:
 
-1. **T001–T004:** pin the real host and installed component versions. Expected effect: removes version/interface uncertainty from every milestone.
-2. **T005–T009:** establish three replayable tasks and before/after economics. Expected effect: turns token-optimization hypotheses into local evidence.
-3. **T102–T104:** one Granite Q6 admission run. Expected effect: resolves most M1 operational uncertainty in a single experiment.
-4. **T201–T203:** prove exactly one context engine/provider path plus LCM recovery and Mnemosyne precision on fixtures.
-5. **T204–T205:** stand up the localhost gateway and run fail-closed negative/bypass tests, including deliberate advisory-hook failure.
-6. **T301–T303:** Pi RPC/custom-provider smoke plus OCI network/credential/canonical-workspace containment.
-7. **T305–T307:** read-only LSP, one bounded edit, replay/rollback/malicious-repo suite.
+1. **Build-start gate:** `python3 scripts/check_repo.py`, read-only preflight, clean checkout, recorded baseline commit, dedicated build branch/worktree.
+2. **T001–T004:** pin the real host and installed component versions. This removes version/interface uncertainty from every milestone.
+3. **T005–T009:** establish three replayable tasks and before/after economics. This turns token-optimization hypotheses into local evidence.
+4. **T102–T104:** Granite runtime preflight, four-case quality falsifier, then the sustained replay. This resolves most M1 uncertainty with the cheap tests first.
+5. **T201–T203:** prove exactly one context engine/provider path plus LCM recovery and Mnemosyne precision on fixtures.
+6. **T204–T205:** stand up the localhost gateway and run fail-closed negative/bypass tests, including deliberate advisory-hook failure.
+7. **T301–T303:** Pi RPC/custom-provider smoke plus OCI network/credential/canonical-workspace containment.
+8. **T305–T307:** read-only LSP, one bounded edit, replay/rollback/malicious-repo suite.
 
 After T001–T009 pass, M0 operational confidence can exceed the pre-execution cap. After the relevant acceptance suites pass, M1–M3 can move into the 90s independently.
 
@@ -112,11 +125,13 @@ After T001–T009 pass, M0 operational confidence can exceed the pre-execution c
 
 The repository is **ready to begin M0 implementation now** because:
 
+- a static repository consistency gate exists before T001;
 - M0 task definitions are executable with no unanswered design choice;
 - later component-changing tasks point to normative specs and rollback/stop conditions;
 - mandatory security denies have a selected enforcement architecture independent of fail-open callbacks;
 - the Pi integration uses documented RPC/custom-provider behavior and a selected real containment topology;
 - model selection is a one-path admission decision, not an open-ended benchmark programme;
+- source-control isolation prevents the self-build experiment from treating `main` as its scratch surface;
 - no current task requires an agent to invent an architecture choice while executing it.
 
 It is **not yet validated for production uplift**. T001 onward must produce the declared evidence before `validated` may be used.
@@ -130,8 +145,8 @@ It is **not yet validated for production uplift**. T001 onward must produce the 
 - Hermes hook semantics: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/hooks.md
 - Hermes providers/custom endpoints: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/integrations/providers.md
 - Hermes provider runtime: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/developer-guide/provider-runtime.md
-- hermes-lcm: https://github.com/stephenschoettler/hermes-lcm
-- Mnemosyne Hermes integration: https://github.com/mnemosyne-oss/mnemosyne/blob/main/docs/hermes-integration.md
+- hermes-lcm releases/source: https://github.com/stephenschoettler/hermes-lcm
+- Mnemosyne releases/integration: https://github.com/mnemosyne-oss/mnemosyne/releases and https://github.com/mnemosyne-oss/mnemosyne/blob/main/docs/hermes-integration.md
 - Pi releases: https://github.com/earendil-works/pi/releases
 - Pi RPC: https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/rpc.md
 - Pi custom providers/models: https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/models.md
