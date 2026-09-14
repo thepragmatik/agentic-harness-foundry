@@ -6,6 +6,8 @@ Status: `specified`
 
 Minimize benchmark cost and prevent attractive-but-operationally-poor models from entering the Hermes stack.
 
+All qualification follows `docs/testing-strategy.md`: **cheapest falsifier first**. In particular, a model MUST pass a tiny evidence/schema quality check before we spend time on the 20-minute sustained replay.
+
 ## Fixed constraints
 
 A candidate MUST satisfy all of the following before any workload-quality evaluation is run:
@@ -25,48 +27,52 @@ Do not create a quantization bake-off.
 
 1. Run `Q6_K` first as the quality reference.
 2. Run `Q5_K_M` only if Q6 quality passes but sustained throughput, thermals, or context/runtime headroom are operationally limiting.
-3. Promote Q5_K_M only if it materially improves sustained operation **and** the compact utility smoke test shows no critical regression versus Q6.
+3. Promote Q5_K_M only if it materially improves sustained operation **and** the same micro-quality checks show no critical regression versus Q6.
 4. Stop once one quant meets the operating requirement; do not benchmark Q4/Q8 for completeness.
 
 For Granite 4.2-8B, the official GGUFs are approximately 7.22 GB at Q6_K and 6.25 GB at Q5_K_M. Both leave substantial headroom inside the 28 GB envelope; Q5 is therefore a throughput/headroom fallback, not the default.
 
 ## Minimal qualification profile
 
-Run only three checks.
+Run only three checks, in this order.
 
-### Q1 — Runtime and memory
+### Q1 — Runtime, memory and callable structured path
 
 - load Q6 in pinned llama.cpp/Metal;
-- allocate a realistic Hermes context target (start at 16K; 32K only after 16K passes);
+- allocate a realistic Hermes context target (start at 16K; 32K only after 16K passes and the real workflow needs it);
 - record model-file size, process resident/wired memory, total inference allocation, swap delta, TTFT, prompt tok/s and decode tok/s;
+- produce one tiny schema-constrained response to verify the chat/template/output path;
 - run Q5_K_M only if the quantization rule is triggered.
 
-**Pass:** model + required inference state stay below 28 GB and do not induce sustained swap growth.
+**Pass:** model + required inference state stay below 28 GB, do not induce sustained swap growth, and the basic structured response is usable.
 
-### Q2 — Sustained Hermes-shaped session
+### Q2 — Micro utility-quality falsifier
 
-Run one 20-minute replay containing:
+Use **exactly four** fixed synthetic examples, one for each intended utility class:
+
+1. evidence-preserving log/tool-output distillation containing required sentinel facts;
+2. schema-constrained extraction;
+3. durable-memory candidate extraction with provenance, including a transient/untrusted distractor;
+4. code/LSP diagnostic summarisation with exact file/symbol references.
+
+Validate required facts and schema mechanically where possible.
+
+**Pass:** no critical sentinel evidence is omitted and structured output is usable. If this fails, reject/fix before any sustained soak.
+
+### Q3 — Sustained Hermes-shaped session
+
+Only after Q2 passes, run one 20-minute replay containing:
 
 - repeated chat turns;
 - one oversized tool/log input;
 - structured JSON output;
 - one code/LSP-style analysis request;
-- context reuse / prompt-cache behavior where supported.
+- context reuse / prompt-cache behavior where supported;
+- embedded sentinel/schema checks so correctness is measured during the soak rather than throughput alone.
 
 Record throughput by interval and the slowest 5-minute window.
 
 **Pass:** no correctness degeneration, server stall, runaway memory growth, or material thermal collapse. Record the actual slowest-window throughput rather than pre-optimizing a synthetic target.
-
-### Q3 — Utility-quality smoke test
-
-Use a compact fixed set of 10–20 examples covering only intended local jobs:
-
-- evidence-preserving log/tool-output distillation;
-- schema-constrained extraction;
-- memory-candidate extraction with provenance;
-- code/LSP diagnostic summarisation.
-
-**Pass:** no critical evidence omissions in safety-critical examples and schema-valid structured output at the declared threshold.
 
 ## Candidate decision tree
 
@@ -84,9 +90,9 @@ Why it is first:
 - broad published evidence across coding, tool use, reasoning and long context;
 - Q6 weight footprint is only ~7.22 GB.
 
-If Q1–Q3 pass: **promote and stop model selection**.
+If Q1–Q3 pass: **qualify and stop model selection**.
 
-If quality passes but sustained operation is limiting: run Granite Q5_K_M. If it passes: **promote and stop**.
+If quality passes but sustained operation is limiting: run Granite Q5_K_M. Re-run only the minimum failing/limiting checks, not an automatic full duplicate suite. If it passes: **qualify and stop**.
 
 ### Step B — one challenger only
 
@@ -94,7 +100,7 @@ Only if Granite fails Q1–Q3, qualify `empero-ai/Qwen3.8-9B-Distill` Q6_K.
 
 Rationale: the Empero distill is a high-upside 9B checkpoint distilled from Qwen3.8 teacher traces, but its training corpus is private and its published downstream evidence is narrower than Granite's. It is therefore the challenger, not the default starting point.
 
-If Empero Q6 passes: promote. Q5_K_M is permitted only under the same trigger as Granite.
+Repeat only the minimum gates needed to resolve the Granite failure mode, while still requiring the four-case micro-quality check before any sustained soak. Q5_K_M is permitted only under the same trigger as Granite.
 
 ### Stop after Step B
 
@@ -117,9 +123,11 @@ The original 2–4B fleet remains available only as a future specialist shelf wh
 
 MTP/DSpark/EAGLE-style acceleration is NOT part of initial admission. Establish the non-speculative baseline first. Re-open only under a separate measured experiment after the resident model is selected.
 
-## Promotion rule
+## Qualification versus production value
 
-Promote the **first model + quant in the decision tree that passes Q1–Q3**. Do not continue model exploration after the operating requirement is met unless production telemetry later exposes a concrete deficiency.
+Passing Q1–Q3 means the model is **qualified** as the resident local utility candidate. It does not prove that local preprocessing is economically useful.
+
+T108 must still prove one real high-volume artifact class reduces external tokens without material quality/retry regression. If T108 fails, keep the model out of the production request path even if it passed admission.
 
 ## Evidence output
 
@@ -132,6 +140,6 @@ Store one compact local JSON/Markdown result under `evidence/local-model/` conta
 - quantization;
 - memory/context settings;
 - Q1–Q3 measurements;
-- pass/reject decision and reason.
+- qualify/reject decision and reason.
 
 `evidence/` is untracked by default under `docs/evidence-policy.md`; publish only sanitized summaries.
