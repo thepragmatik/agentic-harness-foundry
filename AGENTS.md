@@ -26,6 +26,7 @@ Generated evidence does not silently override a specification; it triggers a dec
 - Context compression MUST retain recoverable provenance to original evidence where practical.
 - A new model/component MUST have a simpler baseline and a measurable promotion gate.
 - Never mark a task validated without its declared evidence.
+- **Runtime evidence is local/untracked and sensitive by default.** Follow `docs/evidence-policy.md`; do not commit raw configs/logs/databases/prompts/secrets to this public repo.
 - Prefer reversible, isolated experiments before host-level changes.
 - A task reaching its `Stop if` condition MUST stop. Do not invent a new architecture during execution to get around the gate.
 
@@ -68,15 +69,16 @@ To limit token consumption:
 1. Read this file.
 2. Read the current item in root `TASKS.md`.
 3. Read only the governing spec named by that milestone/task.
-4. Read `docs/build-readiness.md` only when a compatibility/readiness decision is relevant.
-5. Use `docs/architecture.md` when a visual boundary map is useful.
-6. Load research notes only when the active task explicitly needs their evidence.
-7. Never load the entire evidence or research tree into context pre-emptively.
-8. Persist findings to files; chat/session memory is not project state.
+4. Read `docs/evidence-policy.md` before producing/publishing runtime evidence.
+5. Read `docs/build-readiness.md` only when a compatibility/readiness decision is relevant.
+6. Use `docs/architecture.md` when a visual boundary map is useful.
+7. Load research notes only when the active task explicitly needs their evidence.
+8. Never load the entire evidence or research tree into context pre-emptively.
+9. Persist findings to files; chat/session memory is not project state.
 
 ## Evidence discipline
 
-Each completed task points to its declared path under `evidence/`, `evals/`, `schemas/` or tests. Suitable evidence includes:
+Each completed task points to its declared local path under `evidence/`, `evals/`, `schemas/` or tests. Suitable evidence includes:
 
 - deterministic test output;
 - compact benchmark result;
@@ -85,6 +87,8 @@ Each completed task points to its declared path under `evidence/`, `evals/`, `sc
 - security negative test;
 - reproducible command transcript;
 - manual approval only when no machine-verifiable check exists.
+
+`evidence/` is gitignored. A completed task does not imply its raw evidence should be committed. Publish only a manually reviewed/sanitized summary when useful.
 
 Keep bulky raw logs out of routine agent prompts. Store them as files/artifacts and reference by path/hash.
 
