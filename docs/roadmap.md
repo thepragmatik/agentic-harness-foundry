@@ -8,11 +8,12 @@ Goal: harvest measurable value early, keep active decisions small, and stop addi
 
 - Only **one milestone is active** at a time.
 - Only **one local-model path is qualified** at a time.
-- Prefer configuration/adapters over Hermes/Pi core changes.
+- Prefer documented configuration/public integration surfaces over Hermes/Pi core changes.
 - Every lossy transformation keeps recoverable provenance to raw evidence.
 - Security-critical policy is deterministic and fail-closed.
 - Routing/training is optional and starts only if telemetry proves an economic gap.
 - `TASKS.md` is the execution ledger; this roadmap defines milestone boundaries only.
+- `docs/build-readiness.md` tracks specification vs operational confidence; documentation alone cannot lift operational confidence above the pre-execution cap.
 
 ---
 
@@ -37,7 +38,7 @@ Goal: harvest measurable value early, keep active decisions small, and stop addi
 
 **Outcome:** move high-volume, recoverable transformations off paid providers with the smallest possible model-selection exercise.
 
-Follow [`docs/specs/local-model-admission.md`](specs/local-model-admission.md).
+Follow `docs/specs/local-model-admission.md`.
 
 Decision tree:
 
@@ -48,59 +49,54 @@ Decision tree:
 
 The original 2–4B fleet remains a **candidate specialist shelf**, not an active benchmark pool. A second local model is admitted later only if real telemetry exposes a recurring job where it materially beats the resident model end-to-end.
 
-Qualification is limited to:
+Qualification is limited to memory/runtime/throughput at 16K context, one 20-minute sustained Hermes-shaped replay, and a compact 10–20-example utility smoke test.
 
-- memory/runtime/throughput at 16K context in llama.cpp/Metal;
-- one 20-minute sustained Hermes-shaped replay;
-- 10–20 utility examples: tool/log compression, structured extraction, memory-candidate extraction and code/LSP summary.
+Once a model passes, implement one recoverable `context-packet` contract and prove it on exactly one high-volume artifact class first.
 
-Once a model passes, implement one `context-packet` contract with typed result, source path/hash/provenance, selected exact excerpts where needed, deterministic fallback to raw evidence, and per-artifact promotion rather than global summarization.
-
-**Done when:** one local configuration is operationally stable and at least one real artifact class shows material external-token reduction without material task-quality regression.
+**Done when:** one local configuration is operationally stable and one real artifact class shows material external-token reduction without material task-quality regression.
 
 ---
 
-## M2 — Context/memory ownership + trust/egress controls
+## M2 — Context/memory ownership + fail-closed egress
 
-**Outcome:** eliminate duplicate context work and establish the security boundary before deeper autonomy.
+**Outcome:** eliminate duplicate context work and establish the mandatory external-data boundary before deeper autonomy.
 
-### Context and memory
+Follow `docs/specs/m2-context-memory-security.md`.
 
-- LCM owns current-session context selection/compaction/recovery.
-- Mnemosyne owns curated cross-session durable memory only.
-- Recursive/duplicate summarisation paths are prohibited.
-- Sensitive memory uses local/private embeddings unless policy explicitly permits egress.
-- Memory admission, provenance, expiry/review and per-turn retrieval budget are explicit.
-- Exact-detail recovery after compaction is tested.
+Selected architecture:
 
-### Trust and egress
+- LCM is the single current-session `ContextEngine` authority;
+- Mnemosyne is the single external cross-session `MemoryProvider` authority;
+- duplicate Mnemosyne provider+MCP injection is prohibited by default;
+- sensitive memory embeddings remain local unless explicitly allowed;
+- provenance/trust/sensitivity metadata is shared by context and egress decisions;
+- policy-controlled external inference targets a **localhost OpenAI-compatible gateway** through Hermes' documented custom-provider seam;
+- external provider credentials required by that route stay outside the policy-controlled Hermes process/profile wherever practical;
+- hook/middleware/model risk signals are advisory, never the sole mandatory deny boundary.
 
-- provenance/trust labels exist for user, repo, web, tool, memory and generated content;
-- provider/data eligibility rules are deterministic;
-- known secrets are detected deterministically first, with reversible local substitution where useful;
-- model-based injection/PII/security scores remain advisory;
-- destructive/high-risk actions require independent authorization;
-- prompt injection, memory poisoning and exfiltration paths are tested.
+**Done when:** ownership/recovery/memory-budget tests and all fail-closed/injection/poisoning/gateway-bypass tests pass, and rollback is exercised in a disposable profile.
 
-**Done when:** context/memory authorities are unambiguous, required controls fail closed, and the simplified stack beats or matches the pre-M2 baseline on accepted-task economics and recall.
-
-**Simplification rule:** if either LCM or Mnemosyne fails to add measurable value under this ownership contract, remove that layer rather than tuning indefinitely.
+**Simplification rule:** if LCM or Mnemosyne fails to add distinct measured value, remove the non-paying layer rather than tuning indefinitely.
 
 ---
 
-## M3 — Hermes -> contained Pi + LSP execution
+## M3 — Hermes → contained Pi RPC worker + LSP
 
-**Outcome:** add coding capability only after context and trust boundaries are stable.
+**Outcome:** add coding execution through a stable process boundary without widening Hermes or host authority unnecessarily.
 
-- pin Pi version/integration surface;
-- define one typed Hermes -> Pi task/result contract;
-- run Pi in a disposable worktree plus OS/container sandbox with least privilege;
-- prevent unattended direct mutation of the canonical repo;
-- add only high-value LSP operations: symbol lookup, references, diagnostics, rename/refactor where supported;
-- verify edits with compiler/tests/static checks and post-edit LSP diagnostics;
-- return structured diff + diagnostics + test evidence to Hermes.
+Follow `docs/specs/m3-pi-worker-rpc.md`.
 
-**Done when:** containment, rollback, replay and malicious-repo tests pass and a coding task can execute end-to-end without widening Hermes' authority unnecessarily.
+Selected architecture:
+
+- Hermes delegates through Pi's documented `--mode rpc` stdin/stdout protocol, not internal AgentHarness APIs;
+- project-local extensions/skills/templates/themes/context files are disabled by default;
+- the unattended baseline uses **whole-process OCI-container containment** with a disposable workspace and no canonical-repo write authority;
+- the Pi worker has no external-provider credentials and no unrestricted internet; model traffic reaches only the policy gateway;
+- the trusted LSP path is minimal/read-only first: diagnostics, definition, references and symbols;
+- write/refactor capability is promoted only after read-only LSP and containment pass;
+- compiler/tests/static checks/post-edit diagnostics provide objective evidence.
+
+**Done when:** RPC compatibility, project-resource isolation, canonical-repo protection, gateway-only model access, credential/network containment, timeout/crash behavior, read-only LSP, one bounded edit and replay/rollback all pass.
 
 ---
 
@@ -108,13 +104,13 @@ Once a model passes, implement one `context-packet` contract with typed result, 
 
 **Outcome:** do nothing unless real telemetry proves model-selection mistakes are costing enough to matter.
 
-Collect lightweight decision telemetry during M0–M3: eligible model/provider set, chosen path, task/workflow stage, tokens/cache/latency/cost, retry/escalation, and objective acceptance outcome where available.
+Collect lightweight decision telemetry during M0–M3: eligible model/provider set, chosen path, task/workflow stage, tokens/cache/latency/cost, retry/escalation and objective acceptance outcome where available.
 
 Only if analysis shows material recoverable routing regret:
 
 1. deterministic rules/simple scores;
 2. linear/embedding baseline;
-3. ModernBERT or learned harness-native router only if the simple baseline leaves material value.
+3. ModernBERT or another learned harness-native router only if the simple baseline leaves material value.
 
 A local generative router or multi-model committee is not a default milestone.
 
@@ -124,9 +120,9 @@ A local generative router or multi-model committee is not a default milestone.
 
 ## Documentation and HTML rendering — continuous, non-blocking
 
-Markdown remains the authored source of truth. HTML/Mermaid rendering is presentation-only and MUST NOT gate M0–M3.
+Markdown remains the authored source of truth. `docs/architecture.md` contains the Mermaid system/trust diagram. HTML rendering is presentation-only and MUST NOT gate M0–M3.
 
-Required properties when implemented: pinned local dependencies, strict Mermaid security mode, restrictive CSP, accessible semantic palette, and no duplicated prose.
+When implemented, the renderer uses pinned local Markdown/Mermaid/sanitizer dependencies, strict Mermaid security mode, restrictive CSP, accessible labels and no duplicated prose.
 
 ---
 
@@ -135,9 +131,9 @@ Required properties when implemented: pinned local dependencies, strict Mermaid 
 ```text
 M0 baseline + token diet
   -> M1 Granite-first local utility + context packets
-  -> M2 context/memory + security
-  -> M3 Pi/LSP
+  -> M2 LCM/Mnemosyne + localhost policy gateway
+  -> M3 Pi RPC + OCI containment + read-only-first LSP
   -> M4 routing only if telemetry proves value
 ```
 
-This is the complete default roadmap. Detailed executable items live in root [`TASKS.md`](../TASKS.md). New phases/components require an explicit reason that cannot be satisfied inside one of these milestones.
+This is the complete default roadmap. Detailed executable items live in root `TASKS.md`. New phases/components require an explicit reason that cannot be satisfied inside one of these milestones.
