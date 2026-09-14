@@ -11,7 +11,7 @@ Minimize benchmark cost and prevent attractive-but-operationally-poor models fro
 A candidate MUST satisfy all of the following before any workload-quality evaluation is run:
 
 1. Runs through current `llama.cpp` with the Metal backend; no runtime fork is accepted for the default path.
-2. Has a reproducible `Q6_K` GGUF (or documented Q6-equivalent only when plain Q6_K is technically unavailable).
+2. Has a reproducible `Q6_K` GGUF and, where available, `Q5_K_M` GGUF. Q6 is the quality reference; Q5_K_M is permitted only as the lower-memory/throughput production option.
 3. Fits inside a **28 GB total local-inference envelope**, including weights plus the runtime/KV/state needed by the qualification context.
 4. Runs on the target 128 GB Apple Silicon laptop without swap pressure attributable to the local inference service.
 5. Has no known long-session correctness defect relevant to Hermes-style chat/tool use in the pinned llama.cpp build.
@@ -19,15 +19,29 @@ A candidate MUST satisfy all of the following before any workload-quality evalua
 
 Failure of any hard constraint rejects the candidate without further benchmarking.
 
+## Quantization decision rule
+
+Do not create a quantization bake-off.
+
+For each admitted model:
+
+1. Run `Q6_K` first as the quality reference.
+2. Run `Q5_K_M` only if Q6 leaves materially less context/runtime headroom than desired or its sustained throughput is operationally limiting.
+3. Promote Q5_K_M only if it materially improves sustained operation **and** the compact utility-quality smoke test shows no critical regression versus Q6.
+4. Stop once one quant meets the operating requirement; do not benchmark Q4/Q8 for completeness.
+
+For the current Empero distill, published GGUF sizes are approximately 7.56 GB for Q6_K and 6.64 GB for Q5_K_M, so the weight saving alone is modest; the reason to test Q5 is sustained throughput/headroom, not mere disk size.
+
 ## Minimal qualification profile
 
 The project intentionally avoids a broad benchmark suite. Run only:
 
 ### Q1 — Runtime and memory
 
-- load the Q6 model in pinned llama.cpp/Metal;
+- load Q6 in pinned llama.cpp/Metal;
 - allocate a realistic Hermes context target (start at 16K; 32K only after 16K passes);
-- record model-file size, process resident/wired memory, total inference allocation, swap delta, TTFT, prompt tok/s and decode tok/s.
+- record model-file size, process resident/wired memory, total inference allocation, swap delta, TTFT, prompt tok/s and decode tok/s;
+- run Q5_K_M only if the quantization decision rule above is triggered.
 
 **Pass:** model + required inference state stay below 28 GB and do not induce sustained swap growth.
 
@@ -58,22 +72,20 @@ Use a compact fixed set of 10–20 examples covering only the intended local job
 
 ## Candidate policy
 
-To minimize decision surface, at most **two full candidates plus one incumbent/control** may be active at a time.
+To minimize decision surface, at most **two full candidates** are active initially:
 
-Current shortlist:
-
-1. `empero-ai/Qwen3.8-9B-Distill` Q6_K — primary challenger.
-2. `Qwen/Qwen3.5-9B` Q6_K — conservative control.
+1. `empero-ai/Qwen3.8-9B-Distill` — primary challenger; Q6 reference, Q5_K_M conditional production option.
+2. `Qwen/Qwen3.5-9B` — conservative control; same quantization policy.
 
 Do not add another model unless one of the current candidates is rejected or an architecture/model release supplies compelling new evidence against this shortlist.
 
 ## Explicit exclusions at this gate
 
 - `Qwen3.8-27B` Q6: weights alone consume roughly 23–24 GB, leaving inadequate margin inside the 28 GB service envelope for sustained-context operation; public M4 Max evidence also shows modest single-stream decode in at least one laptop configuration.
-- `Qwen3.8-Flash-Next`: far above the envelope even with n-gram/PLE disk offload; stock llama.cpp support remains young and the resident compute weights remain much too large.
+- `Qwen3.8-Flash-Next`: far above the envelope even with n-gram/PLE disk offload; llama.cpp support is recent/evolving and the resident compute weights remain much too large.
 - `DeepSeek-V4.1-Flash`: hundreds of billions of stored parameters plus large Engram tables; current consumer inference relies on substantial host/NVMe streaming and non-stock implementations.
 - MLX-only variants: out of scope by decision.
-- Q4/Q5/IQ quants: out of scope by decision.
+- Q4/IQ and Q8/BF16 variants: out of scope unless a future ADR reopens them.
 - uncensored/abliterated variants: no demonstrated benefit for the intended utility role and add avoidable provenance/safety variability.
 
 ## Speculative decoding
@@ -82,7 +94,7 @@ MTP/DSpark/EAGLE-style acceleration is NOT part of initial admission. Establish 
 
 ## Promotion rule
 
-The promoted utility model is the **simplest candidate that passes Q1–Q3**. Do not spend additional benchmark budget looking for marginal gains after a candidate meets the operational and quality requirements unless observed production telemetry later exposes a concrete deficiency.
+The promoted utility configuration is the **simplest model + quant that passes Q1–Q3**. Do not spend additional benchmark budget looking for marginal gains after a configuration meets the operational and quality requirements unless observed production telemetry later exposes a concrete deficiency.
 
 ## Evidence output
 
@@ -92,6 +104,7 @@ Store one compact JSON/Markdown result under `evidence/local-model/` containing:
 - macOS + llama.cpp commit/build;
 - model repo/revision + GGUF SHA256;
 - exact server arguments;
+- quantization;
 - memory/context settings;
 - Q1–Q3 measurements;
 - pass/reject decision and reason.
