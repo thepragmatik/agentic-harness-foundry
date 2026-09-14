@@ -8,7 +8,7 @@ Hermes can delegate a bounded coding task to Pi as a separate worker process, wi
 
 ## Compatibility target
 
-Research reference: Pi stable `v0.85.1`. The implementation MUST pin the actually installed Pi version in T004/T301 and stop if documented RPC/CLI flags materially differ.
+Research reference: Pi stable `v0.85.1`. The implementation MUST pin the actually installed Pi version in T004/T301 and stop if documented RPC/CLI/provider flags materially differ.
 
 The default integration surface is Pi's documented RPC mode:
 
@@ -18,6 +18,39 @@ pi --mode rpc --no-session
 
 RPC is newline-delimited JSON over stdin/stdout. Hermes MUST interact through a bridge/process supervisor rather than importing Pi's internal `AgentHarness` implementation.
 
+## Selected default containment topology
+
+For unattended Foundry work, the default is **whole-process OCI-container containment** (Docker/Podman-compatible topology), because Pi documents whole-process containerization as a supported isolation pattern and it avoids trusting a Pi extension as the primary security boundary.
+
+Do not automatically fall back to experimental Gondolin/OpenShell or macOS private/deprecated sandbox mechanisms. If no suitable OCI runtime is available on the host, T303 stops for an explicit operator decision.
+
+Preferred topology:
+
+```text
+Hermes host process
+      |
+      | RPC bridge / supervisor
+      v
++---------------- worker containment ----------------+
+| Pi RPC worker                                      |
+| - no host/provider credentials                     |
+| - disposable workspace only                        |
+| - allowlisted tools/LSP/build chain                |
+| - no direct internet egress                        |
++----------------------|-----------------------------+
+                       |
+                       | model API only
+                       v
+              policy egress gateway
+                       |
+                       v
+             approved external provider
+```
+
+The Pi worker may use Pi's documented custom model/provider configuration to point an OpenAI-compatible provider at the policy gateway. It receives only a gateway-scoped credential if needed; external provider credentials remain in the gateway boundary.
+
+Where the container runtime supports network segmentation, the worker SHOULD live on an internal network that reaches only the gateway and explicitly required local services. The gateway may be dual-homed to external provider networks. The exact runtime syntax is recorded in T303 evidence.
+
 ## Why RPC is the selected seam
 
 - documented public surface;
@@ -25,7 +58,7 @@ RPC is newline-delimited JSON over stdin/stdout. Hermes MUST interact through a 
 - language-neutral bridge;
 - explicit lifecycle/timeout/kill boundary;
 - lower coupling to Pi refactors than internal TypeScript harness APIs;
-- easy to place the whole worker inside a sandbox/container/micro-VM.
+- straightforward whole-process container placement.
 
 Do not adopt Pi's in-progress internal AgentHarness migration APIs unless a later ADR proves RPC insufficient.
 
@@ -45,7 +78,20 @@ pi --mode rpc --no-session \
 
 Then add only explicitly required capabilities.
 
-`--offline` MAY be used to suppress Pi startup/network behavior where supported, but it is **not a sandbox** and MUST NOT be relied on as the network-denial boundary.
+`--offline` MAY suppress Pi startup/network behavior where supported, but it is **not a sandbox** and MUST NOT be relied on as the network-denial boundary.
+
+## Pi provider configuration
+
+If the worker uses an external model, configure a dedicated Pi custom provider/model entry whose `baseUrl` points to the Foundry policy gateway and whose API type matches the gateway surface (initially `openai-completions`).
+
+Requirements:
+
+- no external-provider API key is injected into the worker;
+- provider config is supplied by the worker image/launcher, not trusted from the target repository;
+- model/provider ID is fixed by the task/worker profile where deterministic behavior matters;
+- a gateway outage causes model calls to fail rather than switching to a direct provider automatically.
+
+Do not use shell-command credential resolution inside the worker for external provider secrets.
 
 ## Tool policy
 
@@ -72,7 +118,7 @@ Only after the read-only qualification passes, permit the minimum tool set requi
 - `write`
 - `bash`
 
-The bridge/sandbox, not model compliance, MUST enforce filesystem/network/process restrictions.
+The container/bridge policy, not model compliance, MUST enforce filesystem/network/process restrictions.
 
 ## Workspace boundary
 
@@ -81,13 +127,14 @@ Unattended coding MUST NOT run against the canonical working tree.
 Preferred flow:
 
 ```text
-canonical repo (read-only source)
+canonical repo (host; source/reference)
+        |
+        | controlled copy/worktree materialization
+        v
+ disposable writable workspace
         |
         v
- disposable git worktree / copy
-        |
-        v
- OS/container/micro-VM policy boundary
+ OCI worker container
         |
         v
  Pi RPC worker
@@ -99,7 +146,7 @@ canonical repo (read-only source)
  explicit review/apply step outside worker
 ```
 
-The worker MUST receive only credentials and network access explicitly required for the task. Default is no unrelated host credentials and no unrestricted outbound network.
+Strongest default: copy/materialize the disposable workspace into a dedicated worker volume/filesystem rather than bind-mounting the canonical repo read/write. If a host mount is used for the canonical source, it MUST be read-only.
 
 ## Hermes -> Pi task contract
 
@@ -108,7 +155,7 @@ The bridge MUST produce a typed task object with at least:
 - `schema_version`;
 - `task_id`;
 - `repo_identity` / canonical repo reference;
-- disposable `workspace_path` or worker-visible workspace ID;
+- disposable `workspace_id` / worker-visible path;
 - requested outcome / acceptance criteria;
 - allowed paths;
 - allowed tools/capabilities;
@@ -116,9 +163,9 @@ The bridge MUST produce a typed task object with at least:
 - maximum wall-clock timeout;
 - required verification commands;
 - source/provenance references for supplied context;
-- model/provider selection only when explicitly controlled by the caller.
+- model/provider selection when controlled by the caller.
 
-The task contract MUST NOT contain reusable host secrets.
+The task contract MUST NOT contain reusable host or external-provider secrets.
 
 ## Pi -> Hermes result contract
 
@@ -150,27 +197,27 @@ Implement the smallest in-repo bridge needed for:
 - references;
 - workspace/document symbol lookup where supported.
 
-Language servers are allowlisted per repo/language and run in the same containment boundary as the worker or behind an equivalently constrained service.
+Language servers are allowlisted per repo/language and run inside the same worker containment boundary or behind an equivalently constrained service.
 
 ### Stage 2 — edit assistance
 
 Only after Stage 1 is stable, add controlled rename/refactor/code-action support. Any workspace edit MUST be previewed/validated against allowed paths before application and followed by diagnostics/tests.
 
-Do not permit arbitrary LSP server commands to escape the sandbox policy.
+Do not permit arbitrary LSP server commands to escape the containment/network policy.
 
 ## Process supervision
 
 The Hermes-side bridge MUST own:
 
-- process creation;
-- stdin/stdout framing;
+- container/process creation;
+- stdin/stdout RPC framing;
 - stderr capture;
 - startup timeout;
 - per-task wall-clock timeout;
 - cancellation/kill;
 - maximum output/log size;
 - worker exit-code handling;
-- cleanup/disposal of the workspace.
+- cleanup/disposal of worker container and workspace.
 
 An RPC protocol error, worker crash, timeout or malformed result MUST fail the task closed; Hermes may escalate/retry, but MUST NOT interpret missing evidence as success.
 
@@ -192,54 +239,61 @@ Launch with the restrictive flags above.
 
 ### P3 — canonical repo protection
 
-Mount/expose the canonical repo read-only or otherwise deny worker writes. Give the worker a disposable writable worktree/copy.
+Expose the canonical repo read-only or not at all. Give the worker only a disposable writable copy/volume.
 
 **Pass:** worker changes appear only in the disposable workspace; attempted canonical writes fail.
 
 ### P4 — network/credential containment
 
-Use a sentinel environment variable/file plus a network probe in the malicious fixture.
+Use a sentinel host credential/file plus direct-internet and direct-provider probes in the malicious fixture.
 
-**Pass:** unrelated credential material is unavailable and denied network destinations cannot be reached by the worker, independent of model instructions.
+**Pass:** unrelated credential material is unavailable; direct external destinations/providers cannot be reached; allowed model traffic can reach only the policy gateway.
 
-### P5 — timeout/crash behavior
+### P5 — gateway provider path
+
+Configure Pi custom provider/model metadata for the gateway and perform one model call from the contained worker.
+
+**Pass:** the worker functions with only a gateway-scoped credential; stopping the gateway causes model failure rather than direct-provider fallback.
+
+### P6 — timeout/crash behavior
 
 Trigger a long-running task and a malformed/crashing path.
 
 **Pass:** supervisor kills/cleans up at the declared timeout, result is non-success, and partial workspace remains inspectable or is disposed according to policy.
 
-### P6 — read-only LSP
+### P7 — read-only LSP
 
 On one small fixture repo, request diagnostics + definition/references.
 
 **Pass:** correct structured responses are returned without file mutation and without loading unapproved Pi extensions.
 
-### P7 — bounded edit
+### P8 — bounded edit
 
 On a disposable fixture, allow one small code edit.
 
 **Pass:** changed paths remain within allowlist; diff is returned; compiler/tests/static checks and post-edit diagnostics are attached; failure is reported rather than hidden.
 
-### P8 — replay/rollback
+### P9 — replay/rollback
 
 Repeat the same bounded task from a clean disposable workspace and discard it afterward.
 
-**Pass:** replay is operationally reproducible enough for review, and rollback is simply discarding the worker workspace/process without modifying the canonical repo.
+**Pass:** replay is operationally reproducible enough for review, and rollback is simply discarding the worker workspace/container without modifying the canonical repo.
 
 ## Promotion criteria
 
-Promote M3 only if P1–P8 pass and:
+Promote M3 only if P1–P9 pass and:
 
-- the bridge uses documented Pi RPC/CLI behavior;
+- the bridge uses documented Pi RPC/CLI/provider behavior;
 - no third-party Pi extension is required for the critical path;
-- canonical repo and unrelated host credentials are outside worker authority;
+- canonical repo, unrelated host credentials and external-provider credentials are outside worker authority;
+- direct worker internet/provider egress is denied by containment rather than prompts;
 - one coding task completes end-to-end with objective evidence;
 - a malicious-repo fixture cannot opt itself into extra Pi resources/capabilities;
-- process timeout/cancellation and workspace cleanup have been exercised.
+- timeout/cancellation, cleanup and replay/rollback have been exercised.
 
 ## Rollback
 
-Disable/remove the Hermes→Pi bridge configuration/process launcher. Existing Hermes behavior remains available. Disposable workspaces are discarded; no canonical-repo migration is required.
+Disable/remove the Hermes→Pi bridge launcher and worker container profile. Existing Hermes behavior remains available. Disposable workspaces/containers are discarded; no canonical-repo migration is required.
 
 ## Non-goals
 
@@ -247,7 +301,8 @@ Disable/remove the Hermes→Pi bridge configuration/process launcher. Existing H
 - using Pi internal `AgentHarness` classes as a stable API;
 - trusting project-local extensions by default;
 - enabling arbitrary LSP refactors before read-only operations are proven;
-- allowing the worker to decide its own sandbox/network policy.
+- letting the worker hold external-provider credentials;
+- automatically adopting experimental sandbox mechanisms if the OCI baseline is unavailable.
 
 ## Primary references
 
@@ -255,4 +310,5 @@ Disable/remove the Hermes→Pi bridge configuration/process launcher. Existing H
 - Pi SDK / RPC alternative: https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sdk.md
 - Pi security: https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/security.md
 - Pi containerization: https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/containerization.md
+- Pi custom providers/models: https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/models.md
 - Pi CLI flags: https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/cli/args.ts
