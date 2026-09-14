@@ -8,7 +8,7 @@ Keep current-session context, durable memory, provenance and external-provider e
 
 ## Compatibility target
 
-Research reference: Hermes stable `v0.21.2` / `v2026.9.11` with its documented `ContextEngine`, `MemoryProvider`, hooks and middleware contracts. The implementation MUST stop if T003/T004 show materially different installed interfaces.
+Research reference: Hermes stable `v0.21.2` / `v2026.9.11` with its documented `ContextEngine`, `MemoryProvider`, hooks, middleware and custom OpenAI-compatible provider contracts. The implementation MUST stop if T003/T004 show materially different installed interfaces.
 
 LCM and Mnemosyne versions are pinned from the actual installation before change. Do not upgrade them merely to satisfy this spec.
 
@@ -21,7 +21,7 @@ LCM and Mnemosyne versions are pinned from the actual installation before change
 | Curated cross-session durable memory | Mnemosyne selected as the single external `MemoryProvider` | LCM MUST NOT become the durable user/profile memory authority |
 | Built-in `MEMORY.md` / `USER.md` | Hermes built-in memory remains a rollback/reference surface | do not mirror blindly into multiple stores without a tested need |
 | Mandatory data/provider eligibility | deterministic policy outside probabilistic model output | local or cloud LLM classifications are advisory only |
-| Mandatory external egress deny | fail-closed enforcement point | Hermes observer hooks or middleware alone are insufficient because callback/middleware failures are fail-open |
+| Mandatory external egress deny | localhost OpenAI-compatible policy gateway for policy-controlled external inference | Hermes observer hooks or middleware alone are insufficient because callback/middleware failures are fail-open |
 
 ## Required configuration invariants
 
@@ -32,6 +32,7 @@ LCM and Mnemosyne versions are pinned from the actual installation before change
 5. Automatic memory/context injection is budgeted. Provider prefetch/context MUST have a declared per-turn maximum before promotion.
 6. A local-model summary is never the only surviving copy of source evidence.
 7. Research/telemetry hooks accept `**kwargs` and may fail without affecting correctness; they MUST NOT be used as sole deny controls.
+8. In the policy-controlled Hermes profile, external provider traffic that requires mandatory policy enforcement MUST resolve through the localhost gateway rather than a direct provider route.
 
 ## Provenance labels
 
@@ -67,11 +68,39 @@ A contradiction/supersession-capable memory mechanism MAY preserve history, but 
 
 Hermes hooks and middleware are useful for telemetry, request shaping and risk signals, but their documented exception behavior is fail-open. Therefore mandatory sensitive-data egress policy MUST have a fail-closed enforcement point independent of those callbacks.
 
-### Preferred boundary
+### Selected boundary: local OpenAI-compatible gateway
 
-Use a local provider/egress gateway or equivalent independently supervised process when external-provider requests require mandatory minimization/redaction/provider eligibility. On policy evaluation failure, timeout or process unavailability, the request is denied rather than sent unfiltered.
+Hermes natively supports first-class custom OpenAI-compatible endpoints, including named custom providers. Use that public provider seam rather than patching Hermes.
 
-If a provider path cannot be placed behind the chosen enforcement boundary, sensitive classifications that require that boundary MUST make the provider ineligible rather than silently bypassing policy.
+For policy-controlled external inference:
+
+```text
+Hermes profile
+   |
+   | OpenAI-compatible request to localhost only
+   v
+local egress/policy gateway
+   |
+   +-- deterministic provenance/sensitivity/provider policy
+   +-- secret matching/redaction/token substitution
+   +-- request minimization and audit record
+   +-- external provider credential selection
+   |
+   v
+approved external provider
+```
+
+Requirements:
+
+1. Hermes is configured with a named/custom provider whose `base_url`/`api` points at loopback.
+2. Hermes receives only a local gateway credential if authentication is used. External provider API keys/OAuth material needed by the gateway are held outside the policy-controlled Hermes process/profile wherever practical.
+3. The gateway MUST expose only the API surface Hermes requires (initially `/v1/chat/completions`; `/v1/models` only if needed for model discovery).
+4. Policy evaluation failure, timeout, malformed provenance or gateway unavailability returns an error/deny. There is no direct fall-through to an external endpoint.
+5. Provider/model allowlists are evaluated before outbound connection.
+6. For sensitivity classes requiring the gateway, direct Hermes provider selections are ineligible. A missing gateway is a hard failure, not a reason to send direct.
+7. The gateway logs compact decision metadata and hashes, not raw secrets by default.
+
+If the installed Hermes version cannot use a custom OpenAI-compatible provider as documented, T204 MUST stop and the spec must be revised rather than substituting a fail-open callback.
 
 ### Deterministic checks first
 
@@ -80,7 +109,7 @@ Before any model-based security signal:
 - known secret values and configured credential patterns;
 - private-key/token formats and high-confidence structured secrets;
 - explicit path/repository sensitivity rules;
-- provider allow/deny constraints;
+- provider/model allow/deny constraints;
 - tool/action capability policy.
 
 A model MAY add `possible_pii`, `possible_injection` or similar risk signals, but cannot authorize an otherwise forbidden action.
@@ -127,13 +156,19 @@ Attempt to store an untrusted instruction as a durable rule and then trigger it 
 
 Use a sentinel secret and then deliberately crash/disable the advisory hook/middleware layer while attempting external inference.
 
-**Pass:** the independent enforcement boundary still blocks the sentinel. A hook/middleware exception cannot cause the raw request to leave the machine.
+**Pass:** the localhost gateway still blocks the sentinel. A hook/middleware exception cannot cause the raw request to leave the machine.
+
+### S4 — gateway bypass resistance
+
+In the policy-controlled Hermes profile, stop the gateway and attempt to select/use a direct external provider path for a sensitivity class requiring policy enforcement.
+
+**Pass:** inference fails closed because the required external credential/route is unavailable or policy-ineligible; no external connection containing the fixture payload occurs.
 
 ## Promotion criteria
 
 Promote M2 only if:
 
-- C1–C4 and S1–S3 pass;
+- C1–C4 and S1–S4 pass;
 - the long-context baseline does not materially regress;
 - memory/context token overhead is measured;
 - either LCM and Mnemosyne each demonstrate distinct value or the non-paying layer is removed;
@@ -144,7 +179,8 @@ Promote M2 only if:
 1. Preserve pre-M2 config and databases before changes.
 2. External memory can be disabled with Hermes' supported memory-provider command/config while leaving built-in memory available.
 3. LCM can be de-selected by restoring the previous `context.engine`; do not delete its database during rollback.
-4. Egress policy deployment must support disabling the new provider route and restoring the known-good provider configuration without deleting credentials.
+4. Gateway deployment MUST support restoring the pre-M2 provider configuration from a captured backup. Never delete provider credentials during a rollback drill.
+5. Rollback is an explicit operator action; a runtime gateway failure MUST NOT automatically revert to an unfiltered direct provider route.
 
 ## Non-goals
 
@@ -152,7 +188,8 @@ Promote M2 only if:
 - replacing Hermes' session store;
 - merging LCM and Mnemosyne into one database;
 - globally summarizing every tool result;
-- using middleware as the sole security firewall.
+- using middleware as the sole security firewall;
+- implementing a general-purpose enterprise API gateway before one bounded policy path is proven.
 
 ## References
 
@@ -160,5 +197,7 @@ Promote M2 only if:
 - Hermes memory providers: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/developer-guide/memory-provider-plugin.md
 - Hermes hooks: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/hooks.md
 - Hermes middleware: https://github.com/NousResearch/hermes-agent/blob/main/docs/middleware/README.md
+- Hermes providers/custom endpoints: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/integrations/providers.md
+- Hermes provider runtime: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/developer-guide/provider-runtime.md
 - LCM: https://github.com/stephenschoettler/hermes-lcm
 - Mnemosyne Hermes integration: https://github.com/mnemosyne-oss/mnemosyne/blob/main/docs/hermes-integration.md
