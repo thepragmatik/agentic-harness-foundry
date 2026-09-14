@@ -6,6 +6,8 @@ Status: `specified`
 
 Keep current-session context, durable memory, provenance and external-provider egress as separate authorities with no duplicate summarization/injection path and no security-critical dependency on probabilistic or fail-open callbacks.
 
+**Companion tuning playbook:** [`../research/lcm-mnemosyne-context-optimization.md`](../research/lcm-mnemosyne-context-optimization.md) contains the empirical configuration/tuning sequence for minimizing context decay and token overhead. It does not override this normative ownership/security contract.
+
 ## Compatibility target
 
 Research reference: Hermes stable `v0.21.2` / `v2026.9.11` with its documented `ContextEngine`, `MemoryProvider`, hooks, middleware and custom OpenAI-compatible provider contracts. The implementation MUST stop if T003/T004 show materially different installed interfaces.
@@ -136,7 +138,7 @@ Insert a small fixture containing stable facts, transient details and an untrust
 
 ### C4 — injection budget
 
-Measure added context from Mnemosyne prefetch and LCM active context on the baseline memory task.
+Measure added context from Mnemosyne prefetch and LCM active context on the baseline memory task. Apply tuning from the companion playbook one variable at a time only after a duplicate/over-budget source is observed.
 
 **Pass:** total token impact is measured and within the declared budget; no duplicate semantically equivalent memory block is injected.
 
@@ -193,6 +195,7 @@ Promote M2 only if:
 
 ## References
 
+- Companion context/token tuning playbook: `../research/lcm-mnemosyne-context-optimization.md`
 - Hermes context engines: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/developer-guide/context-engine-plugin.md
 - Hermes memory providers: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/developer-guide/memory-provider-plugin.md
 - Hermes hooks: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/hooks.md
