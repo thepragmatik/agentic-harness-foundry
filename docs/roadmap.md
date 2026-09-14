@@ -13,7 +13,7 @@ Goal: harvest low-risk savings first, prove each layer, and postpone complex rou
 - [ ] Record exact Pi version + package source.
 - [ ] Record LCM package/plugin version and active configuration.
 - [ ] Record Mnemosyne version, integration path, embedding backend, capture/retrieval settings.
-- [ ] Record llama.cpp and/or MLX runtime versions.
+- [ ] Record exact llama.cpp version/commit and Metal build flags.
 - [ ] Snapshot current Hermes configuration with secrets removed.
 - [ ] Define one reversible baseline task corpus: research, tool-heavy, coding, long-context, memory-recall.
 - [ ] Capture baseline: input/output/cache tokens, wall time, retries, task success, provider cost.
@@ -33,45 +33,43 @@ Goal: harvest low-risk savings first, prove each layer, and postpone complex rou
 - [ ] Remove redundant tool schemas/instructions from turns where they are unavailable or unnecessary, if Hermes' current extension surface safely supports it.
 - [ ] Add per-turn telemetry for `raw_context_bytes -> sent_context_tokens`.
 
-**Acceptance:** lower external input-token cost on matched tasks with no statistically/materially meaningful task-success regression.
+**Acceptance:** lower external input-token cost on matched tasks with no materially meaningful task-success regression.
 
 **Rollback:** configuration-only or isolated adapter disable.
 
 ---
 
-## Phase 2 — Local utility model bake-off
+## Phase 2 — Local utility model qualification
 
 **Value:** moves high-volume transformation work off paid providers. **Risk:** low-medium because summaries can omit evidence.
 
-Candidates:
+Keep the decision surface intentionally small. Follow [`docs/specs/local-model-admission.md`](specs/local-model-admission.md).
 
-1. `Qwen3.5-9B` MLX 5/6-bit — default champion.
-2. `Qwen3.8-27B` MLX 4-bit — burst quality challenger.
-3. one small model already available locally (start with `MiniCPM5-2B`) — speed/efficiency baseline.
+Current candidate order:
 
-Benchmark workloads:
+1. `empero-ai/Qwen3.8-9B-Distill` — primary candidate.
+2. `Qwen/Qwen3.5-9B` — conservative control only if the distill fails or leaves a material uncertainty.
+
+Runtime is **llama.cpp/Metal only**. Start with **Q6_K**. Run **Q5_K_M** only if Q6 is operationally limiting; stop as soon as one configuration passes.
+
+Qualification workloads are deliberately compact:
 
 - [ ] compiler/test/log distillation;
 - [ ] large tool-output -> typed context packet;
-- [ ] repository/LSP diagnostic summarisation;
 - [ ] durable-memory candidate extraction;
-- [ ] structured extraction with JSON-schema validation;
-- [ ] query rewrite / retrieval intent extraction;
-- [ ] context-summary factual retention and exact-evidence pointer quality.
+- [ ] code/LSP diagnostic summarisation;
+- [ ] schema-constrained structured output.
 
-Measure:
+Measure only what changes the decision:
 
-- [ ] cold start and warm first-token latency;
-- [ ] prompt processing tok/s;
-- [ ] decode tok/s;
-- [ ] peak unified memory at 4K/8K/16K/32K input bands;
-- [ ] laptop power/thermal throttling over sustained runs;
-- [ ] output factuality/retention;
-- [ ] schema validity;
-- [ ] cloud tokens avoided per accepted task;
-- [ ] local milliseconds/joules per cloud token avoided where practical.
+- [ ] load/TTFT;
+- [ ] prompt and decode tok/s;
+- [ ] total inference memory and swap delta at 16K context;
+- [ ] one sustained 20-minute Hermes-shaped replay;
+- [ ] critical evidence retention;
+- [ ] schema validity.
 
-**Gate P2:** choose one resident utility model only if it improves total accepted-task economics and fits alongside Hermes + Pi + LSP/build workloads with safe memory headroom.
+**Gate P2:** promote the first model+quant configuration that fits the 28 GB inference envelope, remains stable through the sustained replay, and passes the compact utility-quality smoke test. Do not continue benchmarking for marginal gains after the gate is satisfied.
 
 ---
 
@@ -128,7 +126,7 @@ Measure:
 - [ ] Define privacy-minimized routing-decision record schema.
 - [ ] Record deterministic eligibility decisions.
 - [ ] Record actual model/provider/task outcomes and economics.
-- [ ] Add shadow predictions from one small/local candidate only after telemetry is stable.
+- [ ] Add shadow predictions from the selected local utility model only after telemetry is stable.
 - [ ] Measure routing regret/opportunity before training anything.
 
 **Gate P6:** if deterministic/simple routing leaves little recoverable economic regret, STOP. Do not train ModernBERT.
@@ -142,7 +140,7 @@ Run only if P6 proves an opportunity.
 - [ ] Baseline: rules + linear/logistic classifier over compact features/embeddings.
 - [ ] Challenger: nearest-neighbour/semantic routing.
 - [ ] Challenger: ModernBERT multi-head classifier.
-- [ ] Optional: local generative router.
+- [ ] Optional: local generative router only if the discriminative approaches fail the economic objective.
 - [ ] Use mission/session/repository/time-separated holdouts.
 - [ ] Calibrate abstention/uncertainty.
 - [ ] Compare cost per accepted task, not classification accuracy alone.
@@ -182,12 +180,10 @@ Can begin early but MUST NOT block optimisation experiments.
 
 # Early harvest order
 
-The recommended order for fastest safe value is:
-
 ```text
 P0 truth
  -> P1 prompt/tool-result diet
- -> P2 local utility benchmark
+ -> P2 one local model qualification
  -> P3 recoverable local distillation
  -> P4 LCM/Mnemosyne ownership
  -> P5 egress/security
@@ -196,4 +192,4 @@ P0 truth
  -> P8 Pi/LSP worker
 ```
 
-This ordering intentionally puts **routing late**. The first dollars/tokens should be saved through deterministic context hygiene and local, recoverable preprocessing rather than through a learned model-selection policy.
+This ordering intentionally puts **routing late** and keeps the local-model decision cheap. The first dollars/tokens should be saved through deterministic context hygiene and local, recoverable preprocessing.
