@@ -13,6 +13,8 @@ Goal: harvest measurable value early, keep active decisions small, and stop addi
 - Security-critical policy is deterministic and fail-closed.
 - Routing/training is optional and starts only if telemetry proves an economic gap.
 - `TASKS.md` is the execution ledger; this roadmap defines milestone boundaries only.
+- `docs/testing-strategy.md` governs test ordering: cheapest falsifier first; soak/full acceptance only after cheaper probes pass.
+- `docs/early-wins.md` defines the first optimization harvests.
 - `docs/build-readiness.md` tracks specification vs operational confidence; documentation alone cannot lift operational confidence above the pre-execution cap.
 
 ---
@@ -21,12 +23,16 @@ Goal: harvest measurable value early, keep active decisions small, and stop addi
 
 **Outcome:** know the exact stack and remove obvious paid-token waste before adding another model or subsystem.
 
+This is the primary low-hanging-fruit milestone:
+
 - pin hardware/software/configuration truth;
 - capture three representative baseline tasks;
 - record token/cache/latency/retry/success metrics;
-- remove obvious repeated prompt/tool-result waste;
-- preserve raw oversized artifacts by path/hash;
-- stabilize reusable prompt prefixes where practical.
+- detect duplicate context/memory injection;
+- remove obvious repeated prompt/tool-result/tool-schema waste one change at a time;
+- preserve raw oversized artifacts by path/hash while keeping only needed prompt material;
+- stabilize reusable prompt prefixes where practical;
+- identify LCM/Mnemosyne overlap before tuning either layer.
 
 **Done when:** the baseline is reproducible and obvious deterministic context waste has been removed or explicitly found negligible.
 
@@ -49,9 +55,13 @@ Decision tree:
 
 The original 2–4B fleet remains a **candidate specialist shelf**, not an active benchmark pool. A second local model is admitted later only if real telemetry exposes a recurring job where it materially beats the resident model end-to-end.
 
-Qualification is limited to memory/runtime/throughput at 16K context, one 20-minute sustained Hermes-shaped replay, and a compact 10–20-example utility smoke test.
+Qualification order is deliberately cheap-to-expensive:
 
-Once a model passes, implement one recoverable `context-packet` contract and prove it on exactly one high-volume artifact class first.
+1. runtime/memory + one tiny structured response at 16K;
+2. exactly four synthetic utility falsifiers with sentinel/schema checks;
+3. only then one 20-minute sustained Hermes-shaped replay.
+
+Once a model qualifies, implement one recoverable `context-packet` contract and prove it on exactly one high-volume artifact class first. Passing model admission does not by itself prove production value.
 
 **Done when:** one local configuration is operationally stable and one real artifact class shows material external-token reduction without material task-quality regression.
 
@@ -74,6 +84,8 @@ Selected architecture:
 - external provider credentials required by that route stay outside the policy-controlled Hermes process/profile wherever practical;
 - hook/middleware/model risk signals are advisory, never the sole mandatory deny boundary.
 
+Testing starts with ownership checks and single synthetic LCM/Mnemosyne fixtures. Gateway allow/deny/timeout/malformed-policy behavior is proven against a fake local upstream before any real provider path is exercised.
+
 **Done when:** ownership/recovery/memory-budget tests and all fail-closed/injection/poisoning/gateway-bypass tests pass, and rollback is exercised in a disposable profile.
 
 **Simplification rule:** if LCM or Mnemosyne fails to add distinct measured value, remove the non-paying layer rather than tuning indefinitely.
@@ -95,6 +107,8 @@ Selected architecture:
 - the trusted LSP path is minimal/read-only first: diagnostics, definition, references and symbols;
 - write/refactor capability is promoted only after read-only LSP and containment pass;
 - compiler/tests/static checks/post-edit diagnostics provide objective evidence.
+
+Testing starts with RPC/process framing, resource-disable behavior and write/network denial. One bounded coding task is attempted only after those cheap probes and read-only LSP pass.
 
 **Done when:** RPC compatibility, project-resource isolation, canonical-repo protection, gateway-only model access, credential/network containment, timeout/crash behavior, read-only LSP, one bounded edit and replay/rollback all pass.
 
