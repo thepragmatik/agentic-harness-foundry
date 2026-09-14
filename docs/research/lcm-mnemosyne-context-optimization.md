@@ -1,6 +1,6 @@
 # LCM + Mnemosyne Context and Token Optimization Playbook
 
-Status: `specified`
+Status: `specified` (not yet target-host validated)
 
 Reviewed: 2026-09-14
 
@@ -8,468 +8,507 @@ This is a **separate tuning/research artefact** for M2. The normative ownership/
 
 ## Objective
 
-Minimise paid/context tokens and reduce context decay while preserving exact recoverability.
+Minimise paid/context tokens and context decay while preserving exact recoverability and keeping the two memory systems from doing the same job twice.
 
-The working hypothesis is deliberately narrow:
+The Foundry working model is:
 
 ```text
-Hermes raw session transcript
+Hermes durable raw transcript
         |
         v
-LCM = current-session context hierarchy + exact recovery
+LCM
+current-session hierarchy, compaction, exact drill-down
         |
-        | only the bounded active context
-        v
-main model
-
-Mnemosyne = curated cross-session durable memory
-        |
-        | only relevant durable facts/prefetch
+        | bounded active context only
         v
 main model
+        ^
+        | bounded durable-memory recall only
+        |
+Mnemosyne
+curated cross-session facts/preferences/decisions
 ```
 
-The systems should be **complementary, not symmetric**. LCM should not become a second durable-memory system and Mnemosyne should not become a second active-transcript summariser.
+The core rule is **complementary ownership, not symmetric recall**:
+
+- LCM owns *what from this session remains live and how old session evidence is recovered*.
+- Mnemosyne owns *what deserves to survive into another session*.
+- Neither system should proactively inject information that the other already supplies unless a measured recall gap justifies it.
 
 ---
 
-## Empirical findings that shape the baseline
+## Evidence-backed findings
 
-### 1. Hermes has one selected context engine
+### 1. LCM is the sole active context engine
 
-When `context.engine: lcm` is active, LCM owns compaction. Hermes core `compression.enabled` remains the global compaction gate, so it must stay enabled, but the built-in compressor threshold is not the authoritative LCM threshold.
+Hermes selects one `ContextEngine`. With `context.engine: lcm`, LCM owns compaction. Hermes `compression.enabled` remains the global gate, so it must remain enabled, but LCM's threshold is the effective compaction threshold.
 
-LCM currently supports `lcm.context_threshold` in Hermes `config.yaml`; most other LCM settings are environment variables. Unknown `lcm.*` YAML keys are not silently equivalent to their `LCM_*` env counterparts.
+LCM currently accepts `lcm.context_threshold` from Hermes `config.yaml`; most other LCM controls remain `LCM_*` environment variables. Unknown `lcm.*` YAML keys are not interchangeable with arbitrary `LCM_*` variables.
 
-**Consequence:** configure one threshold authority and verify it with live `lcm_status` after a normal turn.
+**Foundry consequence:** one threshold authority; verify the resolved source with `lcm_status` after a normal turn.
 
-### 2. LCM preserves raw messages; active context is still lossy
+### 2. There is no universal optimal LCM threshold
 
-LCM stores raw rows and a summary DAG, so older details can be recovered through `lcm_grep`, `lcm_describe`, `lcm_expand`, or `lcm_expand_query`. Earlier compaction therefore trades live-prompt detail for lower token spend; it does not have to destroy the source evidence.
+LCM's upstream default is `0.35`, but upstream model-aware presets use substantially different values (for example `0.75` on some benchmark-backed GPT/Codex routes). The operator guide explicitly recommends tuning against the **effective** context window and the active prompt budget you are willing to pay for.
 
-**Consequence:** optimise for a bounded active prompt and make drill-down part of the agent behaviour instead of trying to keep all raw context live.
+Use:
 
-### 3. Mnemosyne prompt injection can duplicate information already present in LCM
+```text
+trigger_tokens = effective_context_tokens × LCM_CONTEXT_THRESHOLD
+LCM_CONTEXT_THRESHOLD = desired_trigger_tokens / effective_context_tokens
+```
 
-The Hermes provider adds memory context/prefetch to the prompt. Mnemosyne also has a best-effort `MNEMOSYNE_SELF_ECHO_ENABLED=1` integration that observes Hermes' `on_pre_compress` callback and can suppress provider-owned working-memory rows that are already represented in live context.
+**Foundry consequence:** do not hard-code `0.35` merely because it is the default. T006/M0 must establish current prompt economics first; T202 then chooses a desired trigger budget and derives the ratio.
 
-The feature is intentionally conservative: ambiguous proof falls back to ordinary recall; provider restart loses the suppression ledger; consolidated episodic rows can still be recalled.
+### 3. LCM's storage can be lossless while active inference remains lossy
 
-**Consequence:** self-echo suppression is a promising LCM companion, but it must be treated as an experimental deduplication optimisation, not as correctness state.
+LCM preserves raw rows and builds a summary DAG. Older exact details can be recovered with `lcm_grep`, `lcm_describe`, `lcm_expand`, and `lcm_expand_query` rather than being kept in every active prompt.
 
-### 4. Consolidated Mnemosyne rows are already excluded from hot context by default
+**Foundry consequence:** optimise the live prompt aggressively enough to save tokens, but test drill-down recovery. "Raw data still exists" is not equivalent to "the main model automatically remembers it."
 
-Modern Mnemosyne excludes rows stamped `consolidated_at` from `get_context()` prompt injection unless `MNEMOSYNE_CONTEXT_INCLUDE_CONSOLIDATED=1` is explicitly enabled. They remain available through recall.
+### 4. Mnemosyne can echo information that is still present through LCM
 
-**Consequence:** keep this default. Re-including consolidated rows increases prompt duplication without improving durable storage.
+Mnemosyne's Hermes integration injects provider context/prefetch. It also ships a best-effort `MNEMOSYNE_SELF_ECHO_ENABLED=1` mode that observes Hermes' `on_pre_compress` callback and suppresses matching provider-owned working-memory candidates while they are still represented in live context.
 
-### 5. Mnemosyne now defaults Hermes autosync toward user turns rather than assistant turns
+Upstream explicitly describes this as best-effort: ambiguous proof falls back to ordinary recall, provider restart loses the suppression ledger, and consolidated episodic representations remain independently eligible.
 
-Recent Mnemosyne releases default `sync_roles` to user turns only. This was specifically changed to reduce assistant-transcript noise.
+**Foundry consequence:** self-echo suppression is one of the few features specifically complementary to LCM, but it is an experiment, not correctness state.
 
-**Consequence:** preserve `sync_roles: [user]` unless an evaluation proves assistant turns contain durable information that is otherwise lost.
+### 5. Consolidated Mnemosyne rows are already excluded from hot context by default
 
-### 6. Mnemosyne exposes a large tool surface, but it supports a tool allowlist
+Current Mnemosyne excludes `consolidated_at` working-memory rows from `get_context()` prompt injection unless `MNEMOSYNE_CONTEXT_INCLUDE_CONSOLIDATED=1` is set. Consolidated information remains recallable through episodic retrieval.
 
-The current provider implements dozens of memory/graph/persona/sync/diagnostic tools. Every exposed schema can increase tool-definition context. Mnemosyne supports `memory.mnemosyne.tools` to restrict the tool surface while preserving provider context and prefetch.
+**Foundry consequence:** keep consolidated hot-context inclusion **off**. Turning it back on defeats a major token benefit of consolidation.
 
-**Consequence:** start with a minimal operational set rather than exposing every memory capability to every Hermes turn.
+### 6. User-only autosync is now the safer default
 
-### 7. Mnemosyne local embeddings are the right default for this Foundry
+Mnemosyne changed Hermes autosync defaults to user turns only to avoid assistant-transcript noise.
+
+**Foundry consequence:** keep `sync_roles: [user]` unless a test proves assistant turns contain durable information that cannot be represented as explicit memories.
+
+### 7. The provider's tool schema is itself a context cost
+
+Current Mnemosyne code implements dozens of memory, graph, persona, sync and diagnostic tools. Mnemosyne supports a `memory.mnemosyne.tools` allowlist while preserving provider context/prefetch behavior.
+
+**Foundry consequence:** tool-surface minimisation is a low-risk token optimisation. Ordinary sessions should not carry graph/sync/export/persona schemas unless needed.
+
+### 8. Mnemosyne's persona layer can become an always-on prompt tax
+
+Current generated configuration enables persona support and exposes a persona token cap. Persona is useful for stable identity/behavior rules, but it can duplicate user/profile facts already available through durable memory.
+
+**Foundry consequence:** start with persona injection disabled in the token-minimising profile. Re-enable it only if the new-session durable-fact fixture demonstrates a real stable-identity gap.
+
+### 9. Local embeddings are the correct Foundry default
 
 The Hermes wrapper supports local FastEmbed/sqlite-vec. Remote embedding endpoints receive memory text and recall queries.
 
-**Consequence:** local embeddings are both the privacy default and the simplest egress model.
+**Foundry consequence:** local embeddings are the privacy default and avoid a second data-egress path. Remote embeddings require an explicit later policy decision.
 
-### 8. LCM and Mnemosyne can share one local utility LLM service later
+### 10. One local Granite service can potentially serve both summary paths
 
-Hermes auxiliary compression supports a custom OpenAI-compatible endpoint. LCM uses the Hermes auxiliary summarisation path when no LCM-specific summary model is provided. Mnemosyne can independently point its consolidation LLM at an OpenAI-compatible local endpoint with `MNEMOSYNE_LLM_BASE_URL` / `MNEMOSYNE_LLM_MODEL`.
+Hermes auxiliary compression accepts a custom OpenAI-compatible `base_url`. LCM uses Hermes' auxiliary summarisation path when no LCM-specific summary model is selected. Mnemosyne can independently use an OpenAI-compatible endpoint for consolidation/fact-extraction with `MNEMOSYNE_LLM_BASE_URL` / `MNEMOSYNE_LLM_MODEL`.
 
-**Consequence:** after M1 qualifies Granite, one llama.cpp server can potentially service both LCM summaries and Mnemosyne consolidation without paid summarisation calls. This is a **post-M1 experiment**, not a precondition for M2.
+**Foundry consequence:** after M1 qualifies Granite, one llama.cpp service can potentially remove paid summarisation calls from both LCM and Mnemosyne. This is post-M1 and must be measured for queueing/thermal contention.
 
 ---
 
-## Recommended Foundry starting profile
+## Recommended Phase-A topology
 
-This profile intentionally keeps advanced features off. It is a starting hypothesis to validate with T201-T203, not a claim that these values are universally optimal.
+The starting profile deliberately enables the minimum number of automatic context mechanisms.
 
-### Hermes `config.yaml`
+### Hermes configuration skeleton
+
+Apply only after T004/T201 confirms the installed versions accept the keys shown.
 
 ```yaml
 compression:
-  # Required global gate even when LCM is the selected ContextEngine.
+  # LCM still depends on Hermes' global compaction gate.
   enabled: true
 
 context:
   engine: lcm
 
-# LCM currently supports this specific YAML override.
-lcm:
-  # Start with upstream default; move only from measured prompt economics.
-  context_threshold: 0.35
+# Set ONE explicit threshold source only after M0 establishes the desired
+# active-prompt trigger. Example only:
+# lcm:
+#   context_threshold: 0.50
 
 memory:
   provider: mnemosyne
 
-  # Foundry preference: avoid a second always-injected durable-memory block.
-  # Preserve the files as rollback artefacts, but do not inject them once
-  # Mnemosyne has proven healthy in the disposable profile.
+  # After the Mnemosyne canary passes in a disposable profile, disable the
+  # built-in blocks to prevent additive MEMORY.md/USER.md injection.
+  # Keep the files untouched for rollback.
   memory_enabled: false
   user_profile_enabled: false
 
   mnemosyne:
-    # Exact key spelling is version-sensitive; T004/T201 MUST inspect the
-    # installed mnemosyne-hermes provider before applying this profile.
+    # Mnemosyne key names/effective defaults have moved between releases.
+    # Confirm these names against the installed wrapper before applying.
     auto_sleep: true
     sleep_threshold: 20
 
-    # Newer Mnemosyne defaults to user-only autosync. Keep it explicit after
-    # verifying the installed provider accepts this key.
+    # Keep automatic transcript capture user-biased.
     sync_roles:
       - user
 
-    # Do not absorb obvious transient terminal/runtime noise as durable memory.
-    # Keep this list conservative; a broad regex can destroy useful memories.
+    # Durable facts should be made global/canonical intentionally rather than
+    # making every captured memory cross-session by default.
+    default_scope: session
+
+    # Start without an always-on persona block. Re-enable only if measured need.
+    persona_enabled: false
+
+    # Current upstream default is 2000 chars. Keep it initially; if C4 shows
+    # excessive memory injection, halve it once and rerun the recall fixture.
+    prefetch_content_chars: 2000
+
+    # Filter only obvious technical noise. Broad regexes can destroy evidence.
     ignore_patterns:
       - "^Traceback \\(most recent call last\\)"
       - "^\\s+at "
 
-    # Tool names MUST be confirmed from the installed runtime tool list.
-    # Start with only the capabilities that are needed during ordinary turns.
+    # Confirm exact tool names from `hermes tools list` first.
     tools:
       - mnemosyne_remember
       - mnemosyne_recall
-      - mnemosyne_sleep
-      - mnemosyne_stats
       - mnemosyne_get
       - mnemosyne_invalidate
+      - mnemosyne_sleep
+      - mnemosyne_stats
       - mnemosyne_recall_diagnostics
 ```
 
-### LCM environment — Phase A baseline
+### LCM environment — Phase A
+
+Do **not** re-declare the context threshold here if it is already set through `lcm.context_threshold` in `config.yaml`.
 
 ```bash
-# Preserve upstream defaults unless the active workload proves a problem.
-LCM_CONTEXT_THRESHOLD=0.35
-LCM_FRESH_TAIL_COUNT=32
-LCM_LEAF_CHUNK_TOKENS=20000
-LCM_INCREMENTAL_MAX_DEPTH=3
-
-# Avoid competing proactive memory injection. Mnemosyne is the cross-session
-# proactive memory layer in this architecture.
+# Keep a single proactive memory layer: Mnemosyne.
 LCM_PROACTIVE_RECALL_ENABLED=false
 
-# Advanced/derived retrieval features remain off until a measured recall gap.
+# Keep advanced/derived retrieval paths out of the baseline.
 LCM_TEMPORAL_ROLLUPS_ENABLED=false
 LCM_ADAPTIVE_RETRIEVAL_ENABLED=false
 LCM_PREANSWER_EVIDENCE_ENABLED=false
 LCM_ASSERTION_EXTRACTION_ENABLED=false
 LCM_THRESHOLD_FULL_SWEEP_ENABLED=false
+LCM_DYNAMIC_LEAF_CHUNK_ENABLED=false
 ```
 
-### Mnemosyne environment — Phase A baseline
+Unless the installed configuration already differs, initially retain LCM's other upstream defaults (fresh tail 32 messages, leaf chunk 20K tokens, incremental depth 3). Change them only after the specific failure they address has been measured.
+
+### Mnemosyne environment — Phase A
 
 ```bash
-# Local semantic retrieval; exact model may be pinned from installed defaults.
+# Local retrieval; do not send memory/query text to an embedding API.
 MNEMOSYNE_EMBEDDINGS_VIA_API=false
 
-# Keep consolidated rows out of automatic hot prompt context.
+# Consolidated material remains recallable but should not re-enter hot context.
 MNEMOSYNE_CONTEXT_INCLUDE_CONSOLIDATED=0
 
-# Do not enable a second wide retrieval pipeline before baseline measurements.
+# Avoid a wider retrieval pipeline before proving the default path insufficient.
 MNEMOSYNE_POLYPHONIC_RECALL=0
 MNEMOSYNE_ENHANCED_RECALL=0
 
-# Test this separately after ordinary provider recall is proven.
+# Baseline first; enable in its own experiment after ordinary recall passes.
 MNEMOSYNE_SELF_ECHO_ENABLED=0
 ```
 
-### Important version rule
+### Version rule
 
-Mnemosyne's configuration surface has changed quickly. Current generated docs distinguish `auto_sleep_enabled`, environment-only keys, Hermes wrapper keys, and effective defaults that may differ from declared defaults. The Foundry MUST treat the installed provider's runtime config/tool surface as authoritative.
+Mnemosyne's generated configuration currently lists more than 100 keys plus environment-only controls, and several effective defaults have historically differed from declared defaults. The installed package/runtime is authoritative.
 
-Before applying any example above:
+Before applying this profile:
 
 ```text
 hermes memory status
 hermes tools list | grep mnemosyne_
 hermes config get memory.mnemosyne
-hermes mnemosyne version     # when available in the installed wrapper
+hermes mnemosyne version        # when supported by installed wrapper
+lcm_status                      # after one normal Hermes turn
 ```
 
-If a key is absent or renamed, stop and update this artefact from the pinned installed version rather than guessing.
+If a key is absent/renamed, stop and update this artefact from the pinned installed version rather than guessing.
 
 ---
 
-## Recommended optimisation sequence
+## Optimisation ladder
 
-Do not enable all optimisations at once. Each stage should earn the next.
+Each step changes one material variable and reuses the same fixture.
 
-### O1 — eliminate duplicate memory authorities
+### O1 — remove duplicate built-in memory injection
 
-**Change:** after Mnemosyne passes a disposable-profile canary, disable built-in `MEMORY.md` / `USER.md` injection with `memory_enabled: false` and `user_profile_enabled: false` while keeping the files untouched for rollback.
+After a Mnemosyne canary succeeds, disable built-in `MEMORY.md` and `USER.md` injection in a disposable profile while retaining the files for rollback.
 
-**Why:** Hermes otherwise renders built-in memory and the external memory-provider block additively. This is direct recurring context overhead and can also create conflicting versions of the same fact.
+**Why:** Hermes renders built-in memory and external provider memory additively when both are enabled.
 
-**Measure:** system-prompt tokens before/after and recall accuracy on 5 durable facts.
+**Cheap test:** five durable facts, including one preference and one project decision. Compare prompt tokens and new-session recall before/after.
 
-**Promotion:** keep disabled only if Mnemosyne recalls all required durable facts and the built-in block contributes no unique required information.
+**Keep if:** 5/5 durable facts remain available and prompt overhead falls.
 
 **Confidence:** **high**.
 
-### O2 — minimise Mnemosyne tool schemas
+### O2 — shrink Mnemosyne's routine tool surface
 
-**Change:** allowlist the smallest runtime-confirmed tool set needed for ordinary work.
+Use `memory.mnemosyne.tools` to keep only the runtime-confirmed ordinary tools. Defer export/import/sync/graph/persona/shared-memory operations to operator/specialist profiles when possible.
 
-Suggested initial role set:
+**Why:** provider context still works while unnecessary JSON schemas no longer occupy the normal tool surface.
 
-- `mnemosyne_remember`
-- `mnemosyne_recall`
-- `mnemosyne_get` if exact-ID retrieval is useful
-- `mnemosyne_invalidate`
-- `mnemosyne_sleep`
-- `mnemosyne_stats`
-- `mnemosyne_recall_diagnostics`
+**Cheap test:** record prompt/tool-definition tokens before/after; call `remember`, `recall`, exact `get`, and diagnostics once.
 
-Keep export/import/sync/graph/persona/shared-memory tools out of the routine schema unless a task needs them.
+**Confidence:** **high**, with installed tool names as the compatibility gate.
 
-**Why:** provider context/prefetch continues while unnecessary JSON tool schemas disappear from the model tool surface.
+### O3 — keep automatic capture precise
 
-**Measure:** request tool-definition tokens or total stable/volatile prompt delta, plus a tool-call smoke test.
+Keep `sync_roles: [user]`, `default_scope: session`, and conservative `ignore_patterns`.
 
-**Confidence:** **high**, subject to installed tool names.
+Durable cross-session facts should be made `scope=global` or canonical **intentionally** through memory admission, rather than making every auto-captured row global.
 
-### O3 — keep automatic durable capture user-biased
+**Why:** this reduces assistant hallucination/transient task state becoming cross-session retrieval noise.
 
-**Change:** preserve user-only autosync and use conservative `ignore_patterns` for obvious runtime noise.
+**Cheap test:** synthetic session with stable user facts, assistant speculation, shell noise, transient task state and one explicit global fact; inspect stored scopes/content.
 
-**Why:** assistant-generated text and raw error output are poor candidates for unquestioned durable authority and increase retrieval noise.
+**Confidence:** **high** for user-only capture/default-session scope; **medium** for custom regex filters.
 
-**Measure:** 20-turn synthetic session containing stable facts, assistant speculation, stack traces and transient task state. Inspect stored rows after sleep.
+### O4 — use consolidation as a prompt-budget boundary
 
-**Confidence:** **high** for user-only autosync; **medium** for any custom ignore regex.
+Keep auto-sleep enabled and `MNEMOSYNE_CONTEXT_INCLUDE_CONSOLIDATED=0`.
 
-### O4 — use Mnemosyne consolidation to remove hot-memory duplication
+**Why:** consolidated information remains recallable without continuously competing in working-memory prompt context.
 
-**Change:** keep auto-sleep enabled with the installed default threshold initially. Keep `MNEMOSYNE_CONTEXT_INCLUDE_CONSOLIDATED=0`.
-
-**Why:** consolidated rows remain recallable but stop competing with unconsolidated working memory in automatic hot context.
-
-**Measure:** working vs consolidated counts, injected-context size before/after sleep, and next-session recall of durable facts.
+**Cheap test:** measure working/consolidated counts, injected context size before/after sleep, and next-session recall.
 
 **Confidence:** **high** for excluding consolidated rows; **medium** for the optimal sleep threshold.
 
-### O5 — test Mnemosyne self-echo suppression with LCM
+### O5 — test persona injection only if needed
 
-**Change:** only after ordinary LCM compaction + Mnemosyne recall pass, set:
+Start persona injection off. If the durable-fact/new-session fixture loses stable identity/preferences despite ordinary recall, re-enable persona with a deliberately small token cap and rerun the same fixture.
+
+**Why:** persona can improve always-on identity continuity, but it is also an always-on prompt block and may duplicate canonical/global memory.
+
+**Confidence:** **medium**; value depends strongly on workload.
+
+### O6 — test Mnemosyne self-echo suppression against LCM
+
+Only after normal LCM compaction and Mnemosyne recall pass:
 
 ```bash
 MNEMOSYNE_SELF_ECHO_ENABLED=1
 ```
 
-**Why:** the feature is explicitly designed to observe Hermes pre-compression boundaries and suppress provider-owned working-memory candidates that would echo content still represented in live context.
+**Why:** this feature was designed to reduce automatic-memory echo around Hermes compression boundaries.
 
-**Cheap falsifier:** one session with a distinctive durable fact repeated before LCM compaction. Measure whether the fact is injected twice before and after compaction, and whether it remains recallable after it leaves live context.
+**Cheap falsifier:** store a distinctive fact that remains in live session context. Measure whether it appears redundantly in Mnemosyne prefetch before compaction; then compact and prove it becomes recallable when it is no longer safely represented live.
 
-**Reject if:** restart/session transitions make a required fact disappear or suppression causes recall holes.
+**Reject if:** restart/boundary ambiguity produces a recall hole.
 
-**Confidence:** **medium**. Upstream calls this best-effort duplicate reduction, not exact context tracking.
+**Confidence:** **medium**; upstream explicitly calls it best-effort.
 
-### O6 — externalise oversized tool outputs through LCM
+### O7 — externalise large tool outputs through LCM
 
-**Change:** if M0 proves tool/log output is a major prompt-growth source, test:
+If M0 shows tool/log payloads dominate prompt growth, test:
 
 ```bash
 LCM_LARGE_OUTPUT_EXTERNALIZATION_ENABLED=true
-# upstream default threshold is 12,000 characters
+# upstream default threshold: 12,000 characters
 ```
 
-Do not change the threshold in the first experiment.
+Do not change the threshold in the first run.
 
-**Why:** LCM can persist large outputs and put compact references into its compaction serializer while keeping the raw payload recoverable.
-
-If the current-turn/provider-visible replay itself remains the problem, separately test:
+If provider-visible current-turn replay is still the expensive path, separately test:
 
 ```bash
 LCM_LARGE_OUTPUT_ACTIVE_REPLAY_STUBBING_ENABLED=true
-# upstream default active-replay threshold is 25,000 tokens
+# upstream default replay-stub threshold: 25,000 tokens
 ```
 
-**Do not simultaneously tune Hermes core tool spillover thresholds.** Hermes already has its own tool-result spillover mechanism; changing both layers at once makes token attribution and recovery ownership ambiguous.
+**Why:** large raw payloads remain recoverable while active context carries compact references.
 
-**Confidence:** **high** that this reduces token pressure for genuinely large outputs; **medium** on the best threshold for this workload.
+**Important:** Hermes also has core tool spillover controls. Do not tune Hermes spillover and LCM externalization simultaneously; first assign one layer responsibility so savings and recovery failures remain attributable.
 
-### O7 — cap the fresh LCM tail only if it grows pathologically
+**Confidence:** **high** for tool-heavy sessions; threshold optimum remains workload-specific.
 
-LCM protects 32 recent messages by default. A message-count tail can still be huge when recent tool turns are huge.
+### O8 — cap the LCM fresh tail only if externalization is insufficient
 
-If O6 does not control the problem, test a token cap with `LCM_FRESH_TAIL_MAX_TOKENS` rather than immediately reducing `LCM_FRESH_TAIL_COUNT`.
+LCM's default fresh tail protects 32 recent messages. If recent large turns remain expensive after O7, test `LCM_FRESH_TAIL_MAX_TOKENS` before reducing the message count.
 
-Reason: the token-cap implementation still retains the newest message and complete assistant/tool-result groups, reducing the chance of cutting a tool interaction in half.
+The token-cap implementation preserves the newest message and complete assistant/tool-result groups, reducing the chance of splitting a tool exchange.
 
-**Do not choose a production value from theory.** Derive it from the M0/M1 replay distribution.
+**Do not choose a value from theory.** Derive it from the replay's recent-tail distribution.
 
 **Confidence:** **medium**.
 
-### O8 — use the local Granite service for both summary paths only after M1
+### O9 — use one local Granite service for both summary paths after M1
 
-After Granite is qualified, test one shared llama.cpp service rather than two separate local models.
+After Granite passes M1, test a single llama.cpp OpenAI-compatible service for auxiliary summary work.
 
-Hermes/LCM path, conceptually:
+Hermes/LCM conceptual path:
 
 ```yaml
 auxiliary:
   compression:
-    provider: main-or-named-local-provider
-    model: <pinned Granite model name>
-    base_url: http://127.0.0.1:<llama-port>/v1
-    reasoning_effort: low
+    model: <llama-server model id>
+    base_url: http://127.0.0.1:<port>/v1
 ```
 
 Mnemosyne path:
 
 ```bash
 MNEMOSYNE_LLM_ENABLED=true
-MNEMOSYNE_LLM_BASE_URL=http://127.0.0.1:<llama-port>/v1
-MNEMOSYNE_LLM_MODEL=<pinned Granite model name>
+MNEMOSYNE_LLM_BASE_URL=http://127.0.0.1:<port>/v1
+MNEMOSYNE_LLM_MODEL=<llama-server model id>
 ```
 
-**Why:** summarisation/consolidation is recoverable auxiliary work and is a good target for local inference.
+**Why:** LCM summarisation and Mnemosyne consolidation are recoverable auxiliary work, making them strong candidates for local inference and paid-token elimination.
 
-**Risks:**
+**Risks:** shared-server queueing, thermal contention, over-generation, and version-sensitive Mnemosyne fallback behavior. Also verify that any accidental fallback to Hermes' built-in compressor does not exceed the local model's context capacity.
 
-- LCM and Mnemosyne can contend for the same llama.cpp server;
-- reasoning models can over-generate summaries;
-- a built-in Hermes compressor fallback may have different context-size requirements than LCM leaf summarisation;
-- Mnemosyne's local/fallback chain is version-sensitive.
+**Test:** one 20-minute Hermes replay with at least one LCM compaction and one Mnemosyne consolidation; record local queue latency, generation tokens, peak inference memory and external auxiliary tokens.
 
-Run the server with a deliberately bounded concurrency policy and measure queueing during a sustained Hermes replay.
+**Confidence:** **medium-high architecture / unvalidated on target Mac**.
 
-**Confidence:** **medium-high** as a cost-saving architecture; **unvalidated** on the target Mac until M1.
+### O10 — tune prefetch size only after deduplication
+
+Current Mnemosyne generated configuration defaults `prefetch_content_chars` to 2000. Do not immediately shrink it: first eliminate duplicated stores/tools/persona/self-echo.
+
+If C4 still shows excessive injected memory, test **one** smaller value (for example 1000 chars) on the same durable-fact fixture.
+
+**Keep if:** prompt tokens fall with no recall-answer degradation.
+
+**Confidence:** **medium**; exact value is workload-dependent.
 
 ---
 
 ## Features to keep OFF initially
 
-These are interesting but increase the decision surface or duplicate another layer's job.
-
 | Feature | Initial posture | Reason |
 |---|---|---|
-| LCM proactive recall | **OFF** | Mnemosyne already owns cross-session proactive recall; dual injection risks duplication |
-| LCM pre-answer evidence | **OFF** | another automatic context-injection path before a measured retrieval gap |
-| LCM temporal rollups | **OFF** | derived summary hierarchy adds maintenance/summarisation work before demonstrated need |
-| LCM assertion extraction | **OFF** | additional model/extraction calls and another structured-memory surface |
-| LCM threshold full sweep | **OFF** | can spend multiple synchronous summary calls; not needed for baseline |
-| LCM dynamic leaf chunking | **OFF** | upstream recommends threshold/tail/externalization tuning first |
-| Mnemosyne polyphonic recall | **OFF** | upstream evaluation shows better phrasing tolerance but wider irrelevant recall; not a free win |
-| Mnemosyne enhanced recall | **OFF** | upstream isolated probes showed no benefit in at least one measured small corpus; adds pipeline complexity |
-| Mnemosyne consolidated hot-context inclusion | **OFF** | defeats consolidation's prompt-budget advantage |
-| Mnemosyne remote embeddings | **OFF** | memory text/query egress + no obvious need on this host |
-| provider + MCP against same Mnemosyne bank | **OFF** | duplicate tools/injection and ambiguous ownership |
-| broad `MNEMOSYNE_CROSS_SESSION` search | **OFF initially** | prefer intentionally global/canonical durable facts; wide legacy-session search can raise irrelevant recall |
+| LCM proactive recall | **OFF** | Mnemosyne already owns cross-session proactive recall; dual automatic injection is likely duplicative |
+| LCM pre-answer evidence | **OFF** | another automatic prompt-injection path before a measured retrieval gap |
+| LCM temporal rollups | **OFF** | derived summary hierarchy and maintenance work before demonstrated need |
+| LCM assertion extraction | **OFF** | another structured-memory/extraction surface and extra model calls |
+| LCM threshold full sweep | **OFF** | may spend many synchronous summary calls; unnecessary for baseline |
+| LCM dynamic leaf chunking | **OFF** | upstream recommends threshold/tail/externalization as first tuning knobs |
+| Mnemosyne persona injection | **OFF initially** | always-on context cost; may duplicate global/canonical memories |
+| Mnemosyne polyphonic recall | **OFF** | upstream measured better phrasing tolerance but wider irrelevant recall; not a free win |
+| Mnemosyne enhanced recall | **OFF** | extra pipeline complexity; upstream isolated small-corpus probes showed no improvement in one published comparison |
+| consolidated rows in hot context | **OFF** | defeats consolidation's context-budget benefit |
+| Mnemosyne remote embeddings | **OFF** | sends memory text and queries outside the host |
+| provider + MCP for same bank | **OFF** | duplicate tool/injection surface and ambiguous ownership |
+| broad cross-session search | **OFF initially** | prefer intentionally global/canonical durable facts over searching every historical session |
 
 ---
 
 ## Prompt-cache interaction
 
-Hermes explicitly structures the system prompt for cache reuse. External memory-provider content lives in the volatile part of the cached system prompt, while later-turn provider recall is appended closer to the current user turn. Any automatic context system that mutates earlier messages can invalidate downstream prefix caching.
+Hermes explicitly organizes prompt material for cache reuse. External provider memory is part of the more volatile system-prompt region, and later-turn recalled context is injected near the active user turn. Compaction or rewriting of earlier messages can invalidate downstream cache prefixes.
 
-LCM itself states that it is **cache-friendly, not fully cache-aware**: it does not know whether a proposed mutation will break a currently hot provider cache.
+LCM itself describes its current policy as **cache-friendly, not fully cache-aware**: it does not have reliable forward-looking provider cache state/cache-break information.
 
 Therefore:
 
-1. do not enable cache-friendly/deferred LCM tuning until provider cache telemetry shows compaction churn is material;
-2. prefer fewer, meaningful compaction/externalization boundaries over frequent tiny rewrites;
-3. keep stable identity/instructions outside per-turn memory prefetch where possible;
-4. avoid model/provider/account switches mid-session when provider prefix caching matters.
-
-Do not infer a cache win from lower raw prompt size alone. Record billed/cache-read tokens from the external provider where available.
+1. measure provider cache-read/write tokens where available, not just raw prompt size;
+2. prefer fewer meaningful compaction/externalization boundaries over frequent tiny rewrites;
+3. do not enable LCM cache-friendly/deferred-maintenance tuning unless cache telemetry shows compaction churn is actually material;
+4. avoid mid-session model/provider/account switching where provider prefix caching matters;
+5. keep stable instructions/identity out of per-turn recalled memory when possible.
 
 ---
 
 ## Context-decay test fixture
 
-Use one synthetic 30-40 turn session containing:
+Use one synthetic 30-40 turn replay containing:
 
 - 5 durable user/project facts;
-- 5 transient facts that should expire with the task;
-- 3 deliberate contradictions/supersessions;
-- 2 large tool outputs with unique sentinel details;
-- 2 untrusted repo/web instructions;
-- one exact buried identifier required near the end;
-- one `/new` or fresh-session recall check.
+- 5 transient task facts;
+- 3 contradictions/supersessions;
+- 2 large tool outputs, each containing a unique sentinel detail;
+- 2 untrusted repo/web instructions that must never become durable authority;
+- 1 exact buried identifier required near the end;
+- 1 fresh-session recall check.
 
-At checkpoints before compaction, after one LCM compaction, after Mnemosyne sleep, and in a new session, measure:
+Measure at four checkpoints:
+
+1. before LCM compaction;
+2. after one LCM compaction;
+3. after Mnemosyne consolidation/sleep;
+4. in a fresh session.
 
 | Metric | Desired direction |
 |---|---|
 | active prompt tokens | down |
-| memory/provider injected tokens | bounded/down |
-| provider cache-read ratio | stable/up where supported |
+| Mnemosyne injected tokens | bounded/down |
+| provider cached-read ratio where supported | stable/up |
 | exact sentinel recovery | 100% |
-| durable-fact recall | high |
-| transient/untrusted durable admission | ~0 |
-| duplicate semantic injections | ~0 |
-| summary/consolidation external tokens | down, ideally local |
+| durable-fact recall | 100% on the five fixture facts |
+| transient/untrusted durable admission | 0 |
+| duplicate semantic injections | 0 routine duplicates |
+| external summary/consolidation tokens | down, ideally zero after local path |
 | retries caused by missing context | no increase |
-| time-to-recover exact old detail | bounded |
+| exact-old-detail recovery latency | bounded and reproducible |
 
-### Minimal pass criteria for Foundry
+### Minimal promotion criteria
 
-A configuration is promoted only if all are true:
+Promote a configuration only if all are true:
 
-1. **0/5 durable facts lost** across the new-session check.
+1. **0/5 durable facts lost** in the fresh-session check.
 2. **0/2 untrusted instructions** become durable authority.
-3. **Both large-output sentinels remain exactly recoverable** from raw evidence.
-4. **No semantically duplicated memory block** is routinely injected from both active context and durable memory.
-5. **Total external prompt/cache economics improve** versus the M0 baseline, or the configuration is rejected as non-paying complexity.
+3. **2/2 large-output sentinels remain exactly recoverable** from raw evidence.
+4. **The buried identifier remains exactly recoverable** after compaction.
+5. **No routine semantically equivalent memory block** is injected from both active context and durable memory.
+6. **External prompt/cache economics improve** versus M0, or the added feature is rejected as non-paying complexity.
 
-The first run does not need a large statistical benchmark. Re-run only if the result is close enough that noise could reverse the decision.
+This is intentionally a small deterministic fixture. Do not turn it into a benchmark suite unless results are close enough that repeated measurement could change the decision.
 
 ---
 
 ## Decision table
 
-| Technique | Token upside | Context-decay risk | Foundry priority | Empirical confidence |
+| Technique | Token upside | Context-decay risk | Priority | Confidence |
 |---|---:|---:|---:|---:|
-| single LCM + single Mnemosyne authority | high | low | **P0** | **high** |
+| one LCM + one Mnemosyne authority | high | low | **P0** | **high** |
 | disable built-in MEMORY/USER injection after canary | medium-high | low with rollback | **P0** | **high** |
 | Mnemosyne tool allowlist | medium | very low | **P0** | **high** |
-| user-only Mnemosyne autosync | medium | low | **P0** | **high** |
-| keep consolidated rows out of hot context | medium | low | **P0** | **high** |
-| local embeddings | privacy + small latency/token benefit | low | **P0** | **high** |
+| user-only autosync + intentional global scope | medium | low | **P0** | **high** |
+| consolidated rows excluded from hot context | medium | low | **P0** | **high** |
+| local embeddings | privacy + modest latency/egress benefit | low | **P0** | **high** |
+| persona off initially | medium | medium if identity facts are under-recalled | **P0** | **medium** |
 | LCM large-output externalization | very high on tool-heavy sessions | low with raw refs | **P1** | **high** |
 | Mnemosyne self-echo suppression | medium | medium | **P1** | **medium** |
 | LCM fresh-tail token cap | medium | medium | **P1 only if needed** | **medium** |
-| one Granite service for both summary paths | high paid-token upside | medium | **P1 after M1** | **medium-high architecture / unvalidated locally** |
-| polyphonic/enhanced recall | uncertain | precision dilution possible | **defer** | **mixed** |
-| dual proactive recall (LCM + Mnemosyne) | negative/duplicative likely | medium | **do not do** | **high** |
+| one Granite service for both summary paths | high paid-token upside | medium | **P1 after M1** | **medium-high architecture / local evidence pending** |
+| smaller Mnemosyne prefetch cap | medium | medium | **P1 only if injection still high** | **medium** |
+| polyphonic/enhanced recall | uncertain | irrelevant-recall/complexity risk | **defer** | **mixed** |
+| dual proactive recall (LCM + Mnemosyne) | likely negative | medium | **do not do** | **high** |
 
 ---
 
 ## Recommended M2 execution order
 
 ```text
-1. prove installed versions + one ContextEngine / one MemoryProvider
-2. canary Mnemosyne recall
-3. remove built-in MEMORY/USER injection in disposable profile
-4. shrink Mnemosyne tool surface
-5. measure provider-context/prefetch tokens
-6. prove LCM exact recovery through one compaction
-7. prove Mnemosyne sleep + new-session durable recall
-8. test self-echo suppression once
-9. only if tool payloads dominate: enable LCM externalization
-10. only after M1: test local Granite for summaries/consolidation
-11. stop when economics + recovery targets pass
+1. pin installed LCM + Mnemosyne configuration/tool surfaces
+2. prove one ContextEngine + one MemoryProvider
+3. canary Mnemosyne write/recall in disposable profile
+4. disable built-in MEMORY/USER injection; re-run canary
+5. shrink Mnemosyne tool surface; measure schema/prompt delta
+6. prove LCM compaction + exact drill-down recovery
+7. prove Mnemosyne sleep + fresh-session durable recall
+8. test persona only if stable facts are missing
+9. test self-echo suppression once
+10. if tool payloads dominate, enable LCM externalization
+11. if live tail remains oversized, test one fresh-tail token cap
+12. after M1 only, test Granite for both summary paths
+13. stop when recovery + token economics pass
 ```
 
-Do not tune retrieval weights, polyphonic voices, LCM chunking, rollups, or summary DAG parameters unless one of these steps exposes a specific failure that those knobs plausibly address.
+Do **not** tune retrieval weights, polyphonic voices, LCM chunking, rollups, cache-friendly condensation, or additional summary DAG settings unless the preceding tests expose a specific failure those controls plausibly address.
 
 ---
 
 ## Primary sources
 
-- Hermes configuration / context compression / auxiliary models: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/configuration.md
+- Hermes configuration / auxiliary models / tool spillover: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/configuration.md
 - Hermes context compression and prompt caching: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/developer-guide/context-compression-and-caching.md
 - Hermes built-in memory configuration: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/memory.md
 - Hermes memory-provider architecture: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/memory-providers.md
