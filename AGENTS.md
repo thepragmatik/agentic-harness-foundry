@@ -9,10 +9,11 @@ When artifacts conflict, use this precedence:
 1. accepted ADRs in `docs/adr/`;
 2. active normative specifications in `docs/specs/`;
 3. root `TASKS.md` for execution order and evidence paths;
-4. `docs/roadmap.md` for milestone boundaries;
-5. `docs/architecture.md` for visual/explanatory orientation;
-6. research notes in `docs/research/`;
-7. README prose.
+4. `docs/testing-strategy.md` for test ordering/circuit-breakers;
+5. `docs/roadmap.md` for milestone boundaries;
+6. `docs/architecture.md` for visual/explanatory orientation;
+7. research notes in `docs/research/`;
+8. README prose.
 
 Generated evidence does not silently override a specification; it triggers a decision/spec update.
 
@@ -22,6 +23,8 @@ Generated evidence does not silently override a specification; it triggers a dec
 - Do not modify Hermes, Pi, LCM, Mnemosyne, llama.cpp, provider settings, model artifacts or host security controls unless the active task/spec explicitly authorizes the change.
 - Every implementation touching an upstream project MUST pin the installed/tested release/commit/package and record a compatibility probe.
 - **Prefer documented public/stable surfaces over upstream internals.** If a task would require an undocumented/private API, stop and revise the spec.
+- **Cheapest falsifier first.** Follow `docs/testing-strategy.md`; do not jump to a soak/full benchmark/end-to-end mission while a smaller deterministic test can still disprove the design.
+- Change one material variable at a time. After two failed attempts on the same hypothesis, stop/revise rather than tuning indefinitely.
 - Security-critical authorization and egress decisions MUST NOT depend solely on probabilistic model output or a documented fail-open callback path.
 - Context compression MUST retain recoverable provenance to original evidence where practical.
 - A new model/component MUST have a simpler baseline and a measurable promotion gate.
@@ -69,12 +72,13 @@ To limit token consumption:
 1. Read this file.
 2. Read the current item in root `TASKS.md`.
 3. Read only the governing spec named by that milestone/task.
-4. Read `docs/evidence-policy.md` before producing/publishing runtime evidence.
-5. Read `docs/build-readiness.md` only when a compatibility/readiness decision is relevant.
-6. Use `docs/architecture.md` when a visual boundary map is useful.
-7. Load research notes only when the active task explicitly needs their evidence.
-8. Never load the entire evidence or research tree into context pre-emptively.
-9. Persist findings to files; chat/session memory is not project state.
+4. Read `docs/testing-strategy.md` before executing non-trivial tests.
+5. Read `docs/evidence-policy.md` before producing/publishing runtime evidence.
+6. Read `docs/build-readiness.md` only when a compatibility/readiness decision is relevant.
+7. Use `docs/architecture.md` when a visual boundary map is useful.
+8. Load research notes only when the active task explicitly needs their evidence.
+9. Never load the entire evidence or research tree into context pre-emptively.
+10. Persist findings to files; chat/session memory is not project state.
 
 ## Evidence discipline
 
@@ -109,6 +113,10 @@ Use only:
 ## Build-readiness rule
 
 `docs/build-readiness.md` contains evidence-weighted readiness scores. Those scores are advisory and MUST NOT be confused with validation. Target-machine evidence is required to lift operational confidence above the pre-execution cap.
+
+## Self-build bootstrap
+
+When Hermes is used to build Foundry for itself, use `prompts/hermes-bootstrap.md`. The bootstrap prompt delegates task execution while preserving the architecture, fast-feedback and self-hosting safety rules in this repository.
 
 ## Current execution boundary
 
