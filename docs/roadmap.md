@@ -45,12 +45,14 @@ Goal: harvest low-risk savings first, prove each layer, and postpone complex rou
 
 Keep the decision surface intentionally small. Follow [`docs/specs/local-model-admission.md`](specs/local-model-admission.md).
 
-Current candidate order:
+Failure-directed order:
 
-1. `empero-ai/Qwen3.8-9B-Distill` — primary candidate.
-2. `Qwen/Qwen3.5-9B` — conservative control only if the distill fails or leaves a material uncertainty.
+1. `empero-ai/Qwen3.8-9B-Distill` Q6_K — primary.
+2. Same model Q5_K_M — only if Q6 quality passes but sustained operation is limiting.
+3. `google/gemma-4-E4B-it` — only if the Qwen distill fails on efficiency/runtime; its PLE/on-device architecture makes it the targeted efficiency challenger.
+4. `Qwen/Qwen3.5-9B` — only if the distill fails on utility quality; this is the conservative quality fallback.
 
-Runtime is **llama.cpp/Metal only**. Start with **Q6_K**. Run **Q5_K_M** only if Q6 is operationally limiting; stop as soon as one configuration passes.
+Only **one model path is active at a time**. Runtime is llama.cpp/Metal only.
 
 Qualification workloads are deliberately compact:
 
