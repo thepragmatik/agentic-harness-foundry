@@ -43,7 +43,7 @@ Official GGUF sizes are approximately:
 | Q5_K_M | ~6.25 GB | conditional throughput/headroom option |
 | Q6_K | ~7.22 GB | first qualification / quality reference |
 
-Both leave ample theoretical room inside the 28 GB service envelope; T102/T103 must prove actual KV/runtime/thermal behavior on the laptop.
+Both leave ample theoretical room inside the 28 GB service envelope; T102 proves the initial runtime/memory path, T103 cheaply falsifies utility quality, and T104 is the sustained thermal/memory replay.
 
 ## Why Empero remains the only challenger
 
@@ -105,13 +105,14 @@ Prioritize high-volume, recoverable, verifiable work:
 
 ## Minimal Apple qualification
 
-Do not run generic leaderboards locally. Use `../specs/local-model-admission.md`:
+Do not run generic leaderboards locally. Use `../specs/local-model-admission.md` and `../testing-strategy.md`:
 
-- 16K runtime/memory check;
-- one 20-minute Hermes-shaped sustained replay;
-- 10–20 utility examples covering evidence retention, structured extraction, memory extraction and code/LSP summarisation.
+1. **Runtime preflight at 16K:** load/memory/swap plus one schema-constrained response.
+2. **Exactly four synthetic micro-quality cases:** tool/log compression with sentinel facts, schema extraction, memory-candidate extraction with provenance, and code/LSP summary.
+3. **20-minute Hermes-shaped sustained replay:** only after the four-case gate passes.
+4. **One real artifact-class pilot:** proves that admission quality translates into actual external-token savings.
 
-Only move to 32K if 16K passes and the real workflow needs it.
+Only move to 32K if 16K passes and the real workflow needs it. Do not spend sustained-session time on a model that already fails evidence preservation or structured output in the four-case falsifier.
 
 ## Critical review
 
