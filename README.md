@@ -25,11 +25,22 @@ Design and validate an agentic harness that:
 5. **Security is not delegated to an LLM.** Local or remote models may provide risk signals; deterministic policy controls authorization, egress, capabilities, and high-risk actions.
 6. **Complexity must pay rent.** A learned router, extra memory layer, verifier, or model is promoted only if a simpler baseline fails a predeclared acceptance gate.
 
+## Fixed local-inference constraints
+
+To keep the decision surface small, the current local-model programme is intentionally constrained:
+
+- **Runtime:** `llama.cpp` / Metal only. MLX is out of scope unless a future ADR reopens it.
+- **Weight quantization:** `Q6_K` (or a documented Q6-equivalent only if plain Q6_K is unavailable).
+- **Host:** Apple Silicon laptop with 128 GB unified memory.
+- **Inference allocation:** **28 GB hard planning envelope** for model weights + runtime state + KV/cache required by the local inference service. The remaining system memory is reserved for Hermes, Pi, LSPs, builds/tests, browser/tooling, and macOS.
+- **Admission:** a model MUST have credible llama.cpp support and MUST pass a sustained-session probe on the target Mac before integration work begins.
+
 ## Current research position
 
 - **Context:** LCM is the leading working-context candidate, subject to recall/cost/cache-stability evaluation.
 - **Durable memory:** Mnemosyne is the leading cross-session candidate, subject to a strict authority contract with LCM and local/private embeddings.
-- **Local utility model:** `Qwen3.5-9B` is the current always-on Apple Silicon candidate. `Qwen3.8-27B` is a burst/benchmark challenger, not the default resident model.
+- **Local utility model:** the decision has narrowed to the **9B Q6 class**. `empero-ai/Qwen3.8-9B-Distill` is the highest-upside candidate; official `Qwen3.5-9B` is the conservative control. Neither is promoted until the short sustained-session qualification passes on the target Mac.
+- **Large conditional-memory models:** Qwen3.8-Flash-Next and DeepSeek-V4.1-Flash are architecture research inputs, **not local deployment candidates** under the 28 GB/Q6/stock-llama.cpp constraint.
 - **Routing:** deterministic eligibility first; learned routing is an optional experiment, not a roadmap assumption.
 - **Security:** provenance + deterministic policy + least privilege + containment; model-based detectors are advisory.
 - **Coding:** Pi is expected to operate as a contained worker behind Hermes, with LSP/compiler/test evidence used for verification.
@@ -62,15 +73,12 @@ Markdown is the source of truth. Human-facing HTML will render the same Markdown
 - `evidence/` — generated validation evidence, never unverifiable claims
 - `site/` — pinned local Markdown/Mermaid renderer
 
-## Research sources currently informing the baseline
+## Research notes
 
-- Qwen3.8 official repository: https://github.com/QwenLM/Qwen3.8
-- Qwen3.5-9B model card: https://huggingface.co/Qwen/Qwen3.5-9B
-- Qwen3.8-27B model card: https://huggingface.co/Qwen/Qwen3.8-27B
-- MLX Qwen3.5-9B 5-bit: https://huggingface.co/mlx-community/Qwen3.5-9B-5bit
-- MLX Qwen3.8-27B 4-bit: https://huggingface.co/mlx-community/Qwen3.8-27B-4bit
-- GitHub Spec Kit: https://github.com/github/spec-kit
+- [`docs/research/apple-local-models.md`](docs/research/apple-local-models.md) — local-model candidate decision.
+- [`docs/research/conditional-memory-architectures.md`](docs/research/conditional-memory-architectures.md) — Engram/PLE/n-gram architectures and why current flagships are outside the local deployment envelope.
+- [`docs/specs/local-model-admission.md`](docs/specs/local-model-admission.md) — hard admission gates for any local model.
 
 ## Next gate
 
-Do not modify Hermes or Pi yet. First complete the version/compatibility inventory and local-model benchmark harness defined in the roadmap.
+Do not modify Hermes or Pi yet. First complete the version/compatibility inventory and run the deliberately small local-model admission check defined in the roadmap.
