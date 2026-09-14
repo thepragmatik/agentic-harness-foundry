@@ -25,6 +25,33 @@ Design and validate an agentic harness that:
 5. **Security is not delegated to an LLM.** Models may provide signals; deterministic policy controls authorization/egress.
 6. **Complexity must pay rent.** A second model, memory layer, router, or verifier is added only after a measured gap exists.
 7. **Use stable public seams.** Execution agents stop rather than bind to undocumented/upstream-internal APIs.
+8. **Cheapest falsifier first.** Expensive/long tests are earned by passing cheaper deterministic probes.
+
+## Start the build with Hermes
+
+When Hermes is building Foundry for itself, use the repository bootstrap prompt:
+
+**[`prompts/hermes-bootstrap.md`](prompts/hermes-bootstrap.md)**
+
+It tells the agent to execute the existing architecture rather than redesign it, start from the first unchecked task, use the fast-feedback ladder, keep evidence private, and protect the running Hermes instance from self-hosting failures.
+
+## Fast feedback before deep work
+
+The definitive testing policy is [`docs/testing-strategy.md`](docs/testing-strategy.md).
+
+Its central rule is:
+
+```text
+static/preflight
+    -> micro smoke
+    -> small contract fixture
+    -> milestone acceptance
+    -> sustained/soak only after correctness passes
+```
+
+A repeated failure gets one classified retry with one justified variable changed; if it still fails, stop/revise rather than entering a tuning rabbit hole.
+
+The explicitly prioritized low-hanging fruit is in [`docs/early-wins.md`](docs/early-wins.md).
 
 ## Current readiness
 
@@ -57,6 +84,19 @@ The operational score is intentionally capped by missing evidence from the actua
 - **LSP:** start read-only (diagnostics/definition/references/symbols) through a minimal trusted adapter; no arbitrary third-party Pi LSP extension in the critical path.
 - **Routing:** optional. Collect telemetry first; learned routing exists only if economic regret is proven.
 
+## Low-hanging fruit
+
+M0 is deliberately optimization-before-architecture. The first targets are:
+
+1. duplicate context/memory injection;
+2. oversized tool/log payloads that can be retained as raw artifacts and represented compactly;
+3. repeated static prompt/tool-schema material;
+4. avoidable prompt-prefix churn that harms provider cache reuse;
+5. overlapping LCM/Mnemosyne work;
+6. only after those are measured, one local-model context-packet pilot for the single noisiest artifact class.
+
+Do these one at a time so the savings are attributable.
+
 ## Minimal roadmap
 
 Only one milestone is active at a time:
@@ -76,6 +116,7 @@ See [`docs/roadmap.md`](docs/roadmap.md). The single executable checklist is roo
 - [`docs/specs/local-model-admission.md`](docs/specs/local-model-admission.md) — one-path local-model qualification.
 - [`docs/specs/m2-context-memory-security.md`](docs/specs/m2-context-memory-security.md) — context/memory ownership, provenance and fail-closed egress.
 - [`docs/specs/m3-pi-worker-rpc.md`](docs/specs/m3-pi-worker-rpc.md) — Pi RPC process boundary, sandbox and staged LSP.
+- [`docs/testing-strategy.md`](docs/testing-strategy.md) — fast-feedback ladder, circuit breaker and self-hosting test discipline.
 
 Research notes support decisions but do not override these specifications.
 
@@ -95,6 +136,9 @@ Markdown is the authored source of truth. Human-facing HTML will render that sam
 
 - `AGENTS.md` — agent authority, reading discipline and stable integration choices
 - `TASKS.md` — single executable task ledger
+- `prompts/hermes-bootstrap.md` — self-build execution prompt
+- `docs/testing-strategy.md` — cheap-to-expensive test ladder
+- `docs/early-wins.md` — first optimization harvests
 - `docs/build-readiness.md` — evidence-weighted readiness model
 - `docs/roadmap.md` — milestone boundaries and stop rules
 - `docs/specs/` — normative bounded specifications
