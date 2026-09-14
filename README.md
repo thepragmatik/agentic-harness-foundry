@@ -27,13 +27,26 @@ Design and validate an agentic harness that:
 7. **Use stable public seams.** Execution agents stop rather than bind to undocumented/upstream-internal APIs.
 8. **Cheapest falsifier first.** Expensive/long tests are earned by passing cheaper deterministic probes.
 
+## Build-start gate
+
+Before Hermes begins T001:
+
+```bash
+python3 scripts/check_repo.py
+bash scripts/preflight.sh
+```
+
+Then record the starting commit (`git rev-parse HEAD`), confirm the checkout is clean, and create/use a dedicated build branch or worktree. **Do not use `main` as the experimental self-build surface.**
+
+`check_repo.py` is dependency-free and read-only. It checks required source-of-truth files, local Markdown links, task-ID uniqueness, baseline `.gitignore` protections and accidental tracking of sensitive/runtime/model artifacts.
+
 ## Start the build with Hermes
 
 When Hermes is building Foundry for itself, use the repository bootstrap prompt:
 
 **[`prompts/hermes-bootstrap.md`](prompts/hermes-bootstrap.md)**
 
-It tells the agent to execute the existing architecture rather than redesign it, start from the first unchecked task, use the fast-feedback ladder, keep evidence private, and protect the running Hermes instance from self-hosting failures.
+It tells the agent to execute the existing architecture rather than redesign it, run the build-start gate, start from the first unchecked task, use the fast-feedback ladder, keep evidence private, work on a build branch/worktree, and protect the running Hermes instance from self-hosting failures.
 
 ## Fast feedback before deep work
 
@@ -137,6 +150,8 @@ Markdown is the authored source of truth. Human-facing HTML will render that sam
 - `AGENTS.md` — agent authority, reading discipline and stable integration choices
 - `TASKS.md` — single executable task ledger
 - `prompts/hermes-bootstrap.md` — self-build execution prompt
+- `scripts/check_repo.py` — static repository consistency gate
+- `scripts/preflight.sh` — read-only host/tool preflight
 - `docs/testing-strategy.md` — cheap-to-expensive test ladder
 - `docs/early-wins.md` — first optimization harvests
 - `docs/build-readiness.md` — evidence-weighted readiness model
@@ -147,4 +162,4 @@ Markdown is the authored source of truth. Human-facing HTML will render that sam
 
 ## Next gate
 
-Execute **T001–T009 in `TASKS.md`** first. Do not download/qualify Granite or modify M2/M3 components until M0 passes and the installed stack has been pinned.
+Run the build-start gate, then execute **T001–T009 in `TASKS.md`** first. Do not download/qualify Granite or modify M2/M3 components until M0 passes and the installed stack has been pinned.
