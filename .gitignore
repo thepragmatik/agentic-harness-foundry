@@ -1,0 +1,37 @@
+# Runtime evidence is local/private by default.
+evidence/
+
+# Local/private evaluation fixtures may contain repo or prompt material.
+evals/private/
+
+# Local stack state / configuration.
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+
+# Model artifacts.
+*.gguf
+*.safetensors
+*.bin
+
+# Common credentials / certificates / key material.
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local generated configs and scratch areas.
+.local/
+local/
+tmp/
+.cache/
+
+# macOS / editors.
+.DS_Store
+.vscode/
+.idea/
