@@ -4,6 +4,8 @@ Status: `specified`
 
 This is the **single execution ledger**. Work top-to-bottom. Only one unchecked task may be treated as active unless a task explicitly says it can run in parallel.
 
+Before changing an upstream-integrated component, compare the installed version/interface captured by T001–T004 with the compatibility target in the governing spec. If they materially differ, stop and update the spec/compatibility probe rather than guessing.
+
 ## M0 — baseline + deterministic token diet
 
 - [ ] **T001 Capture host identity**
@@ -13,21 +15,24 @@ This is the **single execution ledger**. Work top-to-bottom. Only one unchecked 
   - Stop if: none.
 
 - [ ] **T002 Pin llama.cpp**
-  - Record exact binary version/commit and Metal backend availability.
-  - Verify: `llama-cli --version` and one no-model startup/help check.
+  - Record exact binary version/commit, build options and Metal backend availability.
+  - Verify: `llama-cli --version`, `llama-server --version` where available, and one no-model startup/help check.
   - Evidence: `evidence/m0/llama-version.txt`
   - Stop if: llama.cpp/Metal is not available; fix runtime before model work.
 
 - [ ] **T003 Pin Hermes**
-  - Record exact Hermes version/package source and active profile/config path with secrets redacted.
-  - Verify: `hermes --version`; export/read config using the installed Hermes-supported command only.
+  - Record exact Hermes version/package source, active profile/config path, selected context engine, selected memory provider and relevant plugin paths with secrets redacted.
+  - Verify: `hermes --version`; inspect/export config using only commands supported by the installed Hermes version.
   - Evidence: `evidence/m0/hermes-version.txt`, `evidence/m0/hermes-config.redacted.*`
-  - Stop if: version or active config cannot be identified unambiguously.
+  - Stop if: version, active config, context engine or memory provider cannot be identified unambiguously.
 
 - [ ] **T004 Pin Pi, LCM and Mnemosyne**
-  - Record exact versions/package sources and active integration paths. Do not change them.
+  - Record exact Pi version/package source and verify documented RPC mode/flags exist.
+  - Record the installed LCM plugin path/version/commit and database location without changing it.
+  - Record Mnemosyne core version and Hermes wrapper version independently; use installed package metadata (`pip show`/equivalent) and, when useful, `pip index versions mnemosyne-hermes` rather than inferring publication state from git source alone.
+  - Record whether Mnemosyne is integrated as Hermes memory provider, MCP, or both; record local/remote embedding backend.
   - Evidence: `evidence/m0/components.md`
-  - Stop if: more than one Mnemosyne integration path is active unintentionally; record as a finding before proceeding.
+  - Stop if: Pi RPC surface is absent on the installed version, LCM identity is ambiguous, or the same Mnemosyne bank is unintentionally injected through more than one Hermes path.
 
 - [ ] **T005 Define three baseline tasks**
   - Create exactly three replayable tasks: tool-heavy, long-context/memory, coding.
@@ -42,13 +47,13 @@ This is the **single execution ledger**. Work top-to-bottom. Only one unchecked 
   - Stop if: token/cost telemetry is unavailable; define the nearest reproducible proxy before continuing.
 
 - [ ] **T007 Inventory deterministic token waste**
-  - Inspect one trace from each baseline task for repeated static prompt text, duplicate tool schemas, oversized tool payloads, and unstable reusable prefixes.
+  - Inspect one trace from each baseline task for repeated static prompt text, duplicate tool schemas, oversized tool payloads, duplicate memory/context injection and unstable reusable prefixes.
   - Evidence: `evidence/m0/token-waste.md`
   - Stop if: none.
 
 - [ ] **T008 Apply only obvious reversible token-diet changes**
   - Allowed: configuration or isolated adapter changes that remove duplication/cap oversized payloads while retaining raw evidence by path/hash.
-  - Not allowed: local-model summarization, routing, Hermes/Pi core patches.
+  - Not allowed: local-model summarization, routing, Hermes/Pi core patches or security-boundary changes.
   - Evidence: exact diff/config change + rollback command in `evidence/m0/token-diet.md`.
   - Stop if: the change requires a core patch or loses raw evidence.
 
@@ -60,11 +65,11 @@ This is the **single execution ledger**. Work top-to-bottom. Only one unchecked 
 
 ## M1 — one local utility model + recoverable context packets
 
-Run only after T009 passes.
+Run only after T009 passes. Governing spec: `docs/specs/local-model-admission.md`.
 
 - [ ] **T101 Pin Granite 4.2-8B Q6 artifact**
   - Candidate: `ibm-granite/granite-4.2-8b-GGUF` Q6_K.
-  - Record model repo revision, exact GGUF filename, SHA256, license.
+  - Record model repo revision, exact GGUF filename, SHA256, license and llama.cpp command line.
   - Evidence: `evidence/m1/granite-manifest.md`
   - Stop if: artifact provenance is ambiguous or requires a non-stock runtime.
 
@@ -98,7 +103,7 @@ Run only after T009 passes.
   - Evidence: `evidence/m1/empero-*` only if triggered.
 
 - [ ] **T107 Define minimal context-packet schema**
-  - Fields MUST include source identity/hash, compact content, exact excerpts where needed, uncertainty/omissions, and raw-evidence retrieval pointer.
+  - Fields MUST include source identity/hash, compact content, exact excerpts where needed, uncertainty/omissions, transformation provenance and raw-evidence retrieval pointer.
   - Evidence: `schemas/context-packet.schema.json` plus a schema-validation test.
   - Stop if: provenance requires embedding raw secrets in the packet.
 
@@ -111,28 +116,101 @@ Run only after T009 passes.
 
 ## M2 — context/memory + trust/egress
 
-- [ ] **T201 Write one ownership contract** for LCM, Mnemosyne and raw Hermes history; no overlapping authority.
-- [ ] **T202 Measure LCM/Mnemosyne benefit** on the existing long-context baseline; remove any layer that does not pay for itself.
-- [ ] **T203 Define provenance/trust labels** shared by context and egress.
-- [ ] **T204 Define deterministic provider/data eligibility rules** and fail-closed behavior.
-- [ ] **T205 Run three red-team cases**: indirect injection, memory poisoning, and attempted sensitive-data egress.
+Run only after M1 decision. Governing spec: `docs/specs/m2-context-memory-security.md`.
 
-Each M2 task MUST get a bounded spec before implementation because it crosses data/security ownership boundaries.
+- [ ] **T201 Prove context/memory ownership uniqueness**
+  - Verify exactly one selected Hermes context engine and exactly one selected external memory provider.
+  - Record LCM and Mnemosyne versions, config keys, plugin/provider paths and active bank/database identity.
+  - Verify Mnemosyne is not unintentionally injected through both provider + MCP.
+  - Evidence: `evidence/m2/ownership.md`
+  - Stop if: ownership is ambiguous or duplicate injection exists.
 
-## M3 — contained Pi + LSP
+- [ ] **T202 Exercise LCM exact-detail recovery**
+  - Back up current LCM database/config first.
+  - Drive the long-context fixture through compaction and retrieve one exact buried detail through the documented LCM recovery/drill-down path.
+  - Compare against the original raw source.
+  - Evidence: `evidence/m2/lcm-recovery.md`
+  - Stop if: raw evidence is missing, recovery lineage is ambiguous, or the installed LCM version materially differs from the spec contract.
 
-- [ ] **T301 Pin Pi integration surface** and write the typed Hermes→Pi task/result contract.
-- [ ] **T302 Establish disposable worktree + sandbox boundary** with no unattended canonical-repo mutation.
-- [ ] **T303 Add only symbol lookup/references/diagnostics first**; postpone refactoring operations until read-only LSP use is stable.
-- [ ] **T304 Run one end-to-end coding task** with diff + compiler/tests + post-edit diagnostics returned to Hermes.
-- [ ] **T305 Run rollback/replay/malicious-repo checks** before unattended use.
+- [ ] **T203 Exercise Mnemosyne memory precision**
+  - Use a fixture containing one durable fact, one transient detail and one untrusted instruction.
+  - Sync/end the session, inspect durable memory, then test next-session recall.
+  - Record embedding backend and added prompt/context size.
+  - Evidence: `evidence/m2/memory-precision.md`
+  - Stop if: secrets/untrusted instructions become durable authority, or remote embeddings receive sensitive memory without explicit policy approval.
+
+- [ ] **T204 Define and implement provenance + deterministic egress policy**
+  - Use the minimal labels and fail-closed requirements from the M2 spec.
+  - Choose one independently supervised enforcement point (for example a local provider/egress gateway) for mandatory deny decisions.
+  - Model/hook/middleware risk signals may feed policy but may not override deterministic denial.
+  - Evidence: `evidence/m2/egress-design.md` plus configuration/code diff and rollback procedure.
+  - Stop if: the only available enforcement mechanism is a fail-open hook/middleware callback.
+
+- [ ] **T205 Run M2 acceptance/red-team suite**
+  - Run ownership uniqueness, exact-detail recovery, memory precision/injection-budget, indirect-injection, memory-poisoning and sensitive-egress tests from the M2 spec.
+  - Deliberately crash/disable advisory hooks/middleware during the egress test and prove the independent boundary still blocks the sentinel secret.
+  - Evidence: `evidence/m2/acceptance.json` and `evidence/m2/decision.md`
+  - Stop if: any mandatory deny path fails open or baseline recall/economics regress materially.
+
+- [ ] **T206 Exercise M2 rollback**
+  - Restore pre-M2 config in a disposable profile; de-select new provider/context/egress routes without deleting databases or credentials.
+  - Evidence: `evidence/m2/rollback.md`
+  - Stop if: rollback requires destructive/manual recovery not already documented.
+
+## M3 — contained Pi RPC worker + LSP
+
+Run only after M2 passes. Governing spec: `docs/specs/m3-pi-worker-rpc.md`.
+
+- [ ] **T301 Prove Pi RPC compatibility**
+  - Pin the installed Pi version and verify `--mode rpc`, `--no-session`, `--no-approve`, resource-disable flags and tool-selection flags on that version.
+  - Launch one read-only RPC worker and complete a trivial request/clean shutdown.
+  - Evidence: `evidence/m3/pi-rpc-smoke.jsonl`
+  - Stop if: the bridge would need Pi internal/in-progress `AgentHarness` APIs.
+
+- [ ] **T302 Establish restrictive worker launch + disposable workspace**
+  - Launch with project extensions/skills/templates/themes/context files disabled and a read-only tool profile first.
+  - Create disposable git worktree/copy; ensure canonical repo is outside worker write authority.
+  - Evidence: `evidence/m3/worker-launch.md`
+  - Stop if: project-local resources execute implicitly or canonical writes remain possible.
+
+- [ ] **T303 Establish real sandbox/network/credential boundary**
+  - Select one OS/container/micro-VM containment path supported on the host.
+  - Run sentinel credential/file and denied-network probes from a malicious fixture.
+  - Evidence: `evidence/m3/sandbox.md`
+  - Stop if: containment depends only on Pi prompts, trust prompts, `--offline`, or model compliance.
+
+- [ ] **T304 Implement typed Hermes↔Pi bridge contract**
+  - Implement the task/result fields from the M3 spec plus process supervision: startup timeout, task timeout, cancellation/kill, stderr capture, size limits and cleanup.
+  - Evidence: bridge schema/tests + `evidence/m3/bridge-contract.md`
+  - Stop if: a worker crash/malformed RPC result can be interpreted as success.
+
+- [ ] **T305 Add read-only LSP adapter**
+  - No third-party Pi LSP extension is required for the trusted path.
+  - Start with diagnostics, definition, references and symbol lookup only, using allowlisted language servers inside the worker containment boundary or an equivalent constrained service.
+  - Evidence: `evidence/m3/lsp-readonly.md`
+  - Stop if: LSP operation mutates files or can execute unapproved host commands outside policy.
+
+- [ ] **T306 Run one bounded coding task**
+  - Enable only the minimum edit/write/bash capabilities inside the disposable workspace.
+  - Return changed paths, diff, compiler/tests/static checks and post-edit diagnostics to Hermes.
+  - Evidence: `evidence/m3/coding-task.md`
+  - Stop if: changes escape allowed paths or objective verification is missing.
+
+- [ ] **T307 Run replay/rollback/malicious-repo suite**
+  - Execute P2–P8 from the M3 spec, including project-resource isolation, canonical protection, timeout/crash, network/credential containment, read-only LSP, bounded edit and clean replay/disposal.
+  - Evidence: `evidence/m3/acceptance.json`, `evidence/m3/rollback.md`
+  - Stop if: any containment invariant fails.
 
 ## M4 — optional routing
 
-- [ ] **T401 Evaluate accumulated routing regret.**
-  - If not materially economic: mark M4 `rejected` and stop.
-  - If material: write a new bounded routing spec starting with deterministic/simple baselines.
+- [ ] **T401 Evaluate accumulated routing regret**
+  - Use telemetry already accumulated during M0–M3; do not create a new routing dataset merely to justify routing.
+  - If recoverable economic regret is not material: mark M4 `rejected` and stop.
+  - If material: write one bounded routing spec starting with deterministic/simple baselines; ModernBERT is considered only after those baselines.
+  - Evidence: `evidence/m4/routing-regret.md`
 
 ## Global completion rule
 
 A checkbox may be marked complete only when its declared evidence exists. Architecture prose or chat confirmation is not evidence.
+
+A task that reaches a `Stop if` condition remains unchecked until the governing spec is revised or the condition is resolved. Agents MUST NOT silently choose a new architecture to bypass a stop condition.
