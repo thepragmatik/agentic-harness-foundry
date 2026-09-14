@@ -2,7 +2,7 @@
 
 A clean-slate research, architecture, specification, and validation repository for building a safer, cheaper, context-efficient agentic harness around **Hermes**, **Pi**, local inference, and external LLM providers.
 
-> **Status:** research / specification. No production uplift code is trusted or inherited from prior prototypes.
+> **Status:** specification-hardened and ready to begin M0 evidence capture. No production uplift is considered validated until the declared tests run on the target machine.
 
 ## Mission
 
@@ -24,6 +24,16 @@ Design and validate an agentic harness that:
 4. **Keep raw evidence recoverable.** Compression never becomes the only copy of important evidence.
 5. **Security is not delegated to an LLM.** Models may provide signals; deterministic policy controls authorization/egress.
 6. **Complexity must pay rent.** A second model, memory layer, router, or verifier is added only after a measured gap exists.
+7. **Use stable public seams.** Execution agents stop rather than bind to undocumented/upstream-internal APIs.
+
+## Current readiness
+
+Evidence-weighted pre-execution scores are maintained in [`docs/build-readiness.md`](docs/build-readiness.md):
+
+- **required-stack specification readiness (M0–M3): 97/100**;
+- **required-stack operational confidence before local execution: 79/100**.
+
+The operational score is intentionally capped by missing evidence from the actual Mac/installed stack. Completing T001 onward is how it rises; more broad research is no longer the default way to increase confidence.
 
 ## Fixed local-inference constraints
 
@@ -35,16 +45,17 @@ Design and validate an agentic harness that:
 
 ## Current architecture posture
 
-- **Context:** LCM is the leading current-session context/compaction candidate, subject to measured recall/cache/token benefit.
-- **Durable memory:** Mnemosyne is the leading cross-session candidate, with an explicit non-overlap contract with LCM.
+- **Context:** one Hermes `ContextEngine`; LCM is the planned current-session compaction/recovery authority.
+- **Durable memory:** one external Hermes `MemoryProvider`; Mnemosyne provider mode is the planned cross-session authority. The same bank is not exposed through provider + MCP by default.
 - **Resident local utility model:** qualify official `ibm-granite/granite-4.2-8b-GGUF` Q6_K first. Stop model selection if it passes the compact admission gate.
 - **Q5:** try only if Granite Q6 quality passes but sustained operation needs more throughput/headroom.
 - **One challenger:** `empero-ai/Qwen3.8-9B-Distill` Q6_K is tested only if Granite fails admission.
-- **Original 2–4B fleet:** retained as a **candidate specialist shelf**, not discarded and not benchmarked in parallel. A second model enters only for a measured recurring workload where it materially improves end-to-end operation.
+- **Original 2–4B fleet:** retained as a **candidate specialist shelf**, not discarded and not benchmarked in parallel.
 - **Stacking:** prefer `local attempt -> deterministic verify -> cloud escalation`; avoid always-on multi-model voting/fusion.
+- **Mandatory external egress:** policy-controlled external inference goes through a **localhost OpenAI-compatible gateway** selected via Hermes' supported custom-provider surface; mandatory-deny policy is independent of fail-open hooks/middleware.
+- **Pi integration:** use Pi's documented **RPC mode over stdin/stdout**, not evolving internal AgentHarness APIs. Project-local resources are disabled by default and the worker runs behind a real containment boundary.
+- **LSP:** start read-only (diagnostics/definition/references/symbols) through a minimal trusted adapter; no arbitrary third-party Pi LSP extension in the critical path.
 - **Routing:** optional. Collect telemetry first; learned routing exists only if economic regret is proven.
-- **Security:** provenance + deterministic policy + least privilege + containment; model detectors are advisory.
-- **Coding:** Pi is intended to become a contained worker behind Hermes with LSP/compiler/test evidence.
 
 ## Minimal roadmap
 
@@ -53,44 +64,43 @@ Only one milestone is active at a time:
 ```text
 M0  baseline + deterministic token diet
  -> M1  Granite-first local utility + recoverable context packets
- -> M2  context/memory ownership + deterministic trust/egress
- -> M3  contained Pi + LSP
+ -> M2  LCM/Mnemosyne ownership + fail-closed localhost egress gateway
+ -> M3  contained Pi RPC worker + read-only-first LSP
  -> M4  routing only if telemetry proves value
 ```
 
-See [`docs/roadmap.md`](docs/roadmap.md). The executable checklist is root [`TASKS.md`](TASKS.md).
+See [`docs/roadmap.md`](docs/roadmap.md). The single executable checklist is root [`TASKS.md`](TASKS.md).
+
+## Normative specifications
+
+- [`docs/specs/local-model-admission.md`](docs/specs/local-model-admission.md) — one-path local-model qualification.
+- [`docs/specs/m2-context-memory-security.md`](docs/specs/m2-context-memory-security.md) — context/memory ownership, provenance and fail-closed egress.
+- [`docs/specs/m3-pi-worker-rpc.md`](docs/specs/m3-pi-worker-rpc.md) — Pi RPC process boundary, sandbox and staged LSP.
+
+Research notes support decisions but do not override these specifications.
 
 ## Lightweight specifications
 
-The project uses a deliberately reduced Spec-Kit-inspired workflow. Small bounded work normally needs only:
+The project uses a reduced Spec-Kit-inspired workflow. Small bounded work normally needs only:
 
 ```text
-spec.md -> tasks.md -> evidence -> decision
+normative spec -> TASKS.md item -> evidence -> decision
 ```
 
-Add `plan.md` only for genuinely non-trivial architecture/migration/security work. See [`docs/spec-lite.md`](docs/spec-lite.md).
+Create another `plan.md` only for genuinely dependent migrations/architectural choices. See [`docs/spec-lite.md`](docs/spec-lite.md).
 
 ## Documentation model
 
-Markdown is the authored source of truth. Human-facing HTML will render that same Markdown and fenced Mermaid diagrams; it is a presentation layer, not duplicated documentation.
+Markdown is the authored source of truth. Human-facing HTML will render that same Markdown and fenced Mermaid diagrams; it is a presentation layer, not duplicated documentation. Site work is non-blocking until the execution architecture is proven.
 
-- `README.md` — project entry point
-- `AGENTS.md` — agent navigation/authority rules
+- `AGENTS.md` — agent authority, reading discipline and stable integration choices
 - `TASKS.md` — single executable task ledger
+- `docs/build-readiness.md` — evidence-weighted readiness model
 - `docs/roadmap.md` — milestone boundaries and stop rules
 - `docs/specs/` — normative bounded specifications
-- `docs/research/` — decision-support research, not implementation authority
-- `schemas/` — machine-readable contracts when actually needed
-- `evals/` / `evidence/` — compact reproducible validation artifacts
-- `site/` — optional pinned Markdown/Mermaid renderer, non-blocking
-
-## Research notes
-
-- [`docs/research/stacked-local-models.md`](docs/research/stacked-local-models.md) — original local fleet, model stacking/cascades, and the one-specialist rule.
-- [`docs/research/apple-local-models.md`](docs/research/apple-local-models.md) — Apple Silicon candidate assessment.
-- [`docs/research/conditional-memory-architectures.md`](docs/research/conditional-memory-architectures.md) — Engram/PLE/n-gram architectures and practical local implications.
-- [`docs/specs/local-model-admission.md`](docs/specs/local-model-admission.md) — hard local-model decision gate.
+- `docs/research/` — decision-support research only
+- future `schemas/`, `evals/`, `evidence/` — created by execution tasks as needed rather than as empty ceremony
 
 ## Next gate
 
-Do not modify Hermes or Pi yet. Execute **T001–T009 in `TASKS.md`** first. Only after M0 passes should Granite 4.2-8B qualification begin.
+Execute **T001–T009 in `TASKS.md`** first. Do not download/qualify Granite or modify M2/M3 components until M0 passes and the installed stack has been pinned.
