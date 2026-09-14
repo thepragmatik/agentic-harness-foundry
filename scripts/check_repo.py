@@ -43,11 +43,9 @@ FORBIDDEN_TRACKED_PREFIXES = (
     ".cache/",
 )
 FORBIDDEN_TRACKED_SUFFIXES = (
-    ".db",
-    ".sqlite",
-    ".sqlite3",
     ".gguf",
     ".safetensors",
+    ".bin",
     ".pem",
     ".key",
     ".p12",
@@ -57,6 +55,7 @@ FORBIDDEN_TRACKED_SUFFIXES = (
 LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 TASK_RE = re.compile(r"\*\*T(\d{3})\b")
 UNCHECKED_RE = re.compile(r"^- \[ \] \*\*T(\d{3})\b", re.MULTILINE)
+DB_RE = re.compile(r"\.(?:db|sqlite|sqlite3)(?:-.+)?$")
 
 
 def fail(errors: list[str], message: str) -> None:
@@ -87,7 +86,6 @@ def normalize_markdown_target(raw: str) -> str | None:
 
 def check_markdown_links(errors: list[str]) -> None:
     for md in sorted(ROOT.rglob("*.md")):
-        # Ignore anything under .git if this script is run from an unusual checkout.
         if ".git" in md.parts:
             continue
         text = md.read_text(encoding="utf-8")
@@ -146,9 +144,9 @@ def check_sensitive_tracking(errors: list[str]) -> None:
         lower = path.lower()
         if path.startswith(FORBIDDEN_TRACKED_PREFIXES):
             fail(errors, f"sensitive/local path is tracked: {path}")
-        if lower == ".env" or lower.startswith(".env.") and lower != ".env.example":
+        if lower == ".env" or (lower.startswith(".env.") and lower != ".env.example"):
             fail(errors, f"environment file is tracked: {path}")
-        if lower.endswith(FORBIDDEN_TRACKED_SUFFIXES):
+        if lower.endswith(FORBIDDEN_TRACKED_SUFFIXES) or DB_RE.search(lower):
             fail(errors, f"sensitive/model artifact is tracked: {path}")
 
 
@@ -171,7 +169,7 @@ def main() -> int:
     check_sensitive_tracking(errors)
 
     if errors:
-        print("FOUNDry repo check: FAIL")
+        print("Foundry repo check: FAIL")
         for item in errors:
             print(f"- {item}")
         return 1
