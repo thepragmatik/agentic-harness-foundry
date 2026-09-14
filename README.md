@@ -9,76 +9,87 @@ A clean-slate research, architecture, specification, and validation repository f
 Design and validate an agentic harness that:
 
 - reduces paid-token consumption without silently reducing task quality;
-- treats context, durable memory, routing, security, and execution as separate ownership boundaries;
-- uses local Apple Silicon inference where it has measurable economic or privacy value;
+- treats context, durable memory, security, routing, and execution as separate ownership boundaries;
+- uses local Apple Silicon inference only where it has measurable economic, latency, or privacy value;
 - keeps security-critical policy deterministic and fail-closed;
 - integrates Hermes orchestration with a contained Pi coding worker and LSP-assisted edits;
 - is reproducible against exact upstream versions/commits;
-- is readable by humans and executable/unambiguous for agents.
+- is readable by humans and unambiguous for agents.
 
 ## Clean-slate rules
 
-1. **No inherited implementation authority.** Earlier repositories may be consulted only as evidence or failed-experiment archives. Their code, metrics, and architectural claims are not accepted without re-validation.
-2. **Version-pin before implementation.** Every integration spec MUST name the upstream version/commit it targets and define a compatibility probe.
-3. **Measure cost per accepted task.** Token count alone is not the objective; retries, cache effects, latency, local compute, and task success all matter.
-4. **Keep raw evidence recoverable.** Local compression may reduce cloud context, but original artifacts remain addressable by stable provenance/hash wherever practical.
-5. **Security is not delegated to an LLM.** Local or remote models may provide risk signals; deterministic policy controls authorization, egress, capabilities, and high-risk actions.
-6. **Complexity must pay rent.** A learned router, extra memory layer, verifier, or model is promoted only if a simpler baseline fails a predeclared acceptance gate.
+1. **No inherited implementation authority.** Earlier repositories are evidence/failed-experiment archives only.
+2. **Version-pin before implementation.** Every upstream integration declares the tested version/commit and a compatibility probe.
+3. **Measure cost per accepted task.** Tokens, cache effects, retries, latency, local compute, and task success all count.
+4. **Keep raw evidence recoverable.** Compression never becomes the only copy of important evidence.
+5. **Security is not delegated to an LLM.** Models may provide signals; deterministic policy controls authorization/egress.
+6. **Complexity must pay rent.** A second model, memory layer, router, or verifier is added only after a measured gap exists.
 
 ## Fixed local-inference constraints
 
-To keep the decision surface small, the current local-model programme is intentionally constrained:
-
-- **Runtime:** `llama.cpp` / Metal only. MLX is out of scope unless a future ADR reopens it.
-- **Weight quantization:** `Q6_K` is the quality reference; `Q5_K_M` is allowed only when it materially improves sustained throughput or context/runtime headroom without a critical utility-quality regression.
+- **Runtime:** `llama.cpp` / Metal only.
+- **Quantization:** `Q6_K` first; `Q5_K_M` only if Q6 quality passes but sustained operation benefits materially from Q5.
 - **Host:** Apple Silicon laptop with 128 GB unified memory.
-- **Inference allocation:** **28 GB hard planning envelope** for model weights + runtime state + KV/cache required by the local inference service. The remaining system memory is reserved for Hermes, Pi, LSPs, builds/tests, browser/tooling, and macOS.
-- **Admission:** a model MUST have credible llama.cpp support and MUST pass a sustained-session probe on the target Mac before integration work begins.
+- **Inference envelope:** **28 GB total** for local-model weights + inference/runtime/KV/state. The rest is reserved for Hermes, Pi, LSPs, builds/tests, browser/tooling, and macOS.
+- **Admission:** model support must be boring enough for stock upstream llama.cpp and survive a sustained Hermes-shaped replay on the target Mac.
 
-## Current research position
+## Current architecture posture
 
-- **Context:** LCM is the leading working-context candidate, subject to recall/cost/cache-stability evaluation.
-- **Durable memory:** Mnemosyne is the leading cross-session candidate, subject to a strict authority contract with LCM and local/private embeddings.
-- **Local utility model:** the decision has narrowed to the **9B Q5/Q6 class**. `empero-ai/Qwen3.8-9B-Distill` is the highest-upside candidate; official `Qwen3.5-9B` is the conservative control. Neither is promoted until the short sustained-session qualification passes on the target Mac.
-- **Large conditional-memory models:** Qwen3.8-Flash-Next and DeepSeek-V4.1-Flash are architecture research inputs, **not local deployment candidates** under the 28 GB/llama.cpp constraint.
-- **Routing:** deterministic eligibility first; learned routing is an optional experiment, not a roadmap assumption.
-- **Security:** provenance + deterministic policy + least privilege + containment; model-based detectors are advisory.
-- **Coding:** Pi is expected to operate as a contained worker behind Hermes, with LSP/compiler/test evidence used for verification.
+- **Context:** LCM is the leading current-session context/compaction candidate, subject to measured recall/cache/token benefit.
+- **Durable memory:** Mnemosyne is the leading cross-session candidate, with an explicit non-overlap contract with LCM.
+- **Resident local utility model:** start with `empero-ai/Qwen3.8-9B-Distill` Q6_K. Stop model selection if it passes the compact admission gate.
+- **Q5:** try only if Q6 needs more sustained throughput/headroom.
+- **Fallbacks:** Gemma 4 E4B only for an efficiency failure; official Qwen3.5-9B only for a quality/reliability failure.
+- **Original 2–4B fleet:** retained as a **candidate specialist shelf**, not discarded and not benchmarked in parallel. A second model enters only for a measured recurring workload where it materially improves end-to-end operation.
+- **Stacking:** prefer `local attempt -> deterministic verify -> cloud escalation`; avoid always-on multi-model voting/fusion.
+- **Routing:** optional. Collect telemetry first; learned routing exists only if economic regret is proven.
+- **Security:** provenance + deterministic policy + least privilege + containment; model detectors are advisory.
+- **Coding:** Pi is intended to become a contained worker behind Hermes with LSP/compiler/test evidence.
 
-## Execution order
+## Minimal roadmap
 
-See [`docs/roadmap.md`](docs/roadmap.md) for the low-risk, early-value checklist and promotion gates.
-
-## Specifications
-
-This project uses a deliberately lightweight Spec-Kit-inspired workflow. We keep durable Markdown artifacts, but do **not** install the full prompt-heavy workflow by default.
-
-For each bounded change:
+Only one milestone is active at a time:
 
 ```text
-spec.md  ->  plan.md  ->  tasks.md  ->  evidence  ->  decision
+M0  baseline + deterministic token diet
+ -> M1  one local utility model + recoverable context packets
+ -> M2  context/memory ownership + deterministic trust/egress
+ -> M3  contained Pi + LSP
+ -> M4  routing only if telemetry proves value
 ```
 
-Only `spec.md` and `tasks.md` are mandatory for small changes. See [`docs/spec-lite.md`](docs/spec-lite.md).
+See [`docs/roadmap.md`](docs/roadmap.md).
+
+## Lightweight specifications
+
+The project uses a deliberately reduced Spec-Kit-inspired workflow. Small bounded work normally needs only:
+
+```text
+spec.md -> tasks.md -> evidence -> decision
+```
+
+Add `plan.md` only for genuinely non-trivial architecture/migration/security work. See [`docs/spec-lite.md`](docs/spec-lite.md).
 
 ## Documentation model
 
-Markdown is the source of truth. Human-facing HTML will render the same Markdown and Mermaid diagrams; HTML is a presentation layer, not a second documentation source.
+Markdown is the authored source of truth. Human-facing HTML will render that same Markdown and fenced Mermaid diagrams; it is a presentation layer, not duplicated documentation.
 
 - `README.md` — project entry point
-- `AGENTS.md` — agent navigation and authority rules
-- `docs/` — architecture, research, specifications, ADRs, runbooks, benchmarks
-- `schemas/` — machine-readable contracts
-- `evals/` — reproducible evaluations
-- `evidence/` — generated validation evidence, never unverifiable claims
-- `site/` — pinned local Markdown/Mermaid renderer
+- `AGENTS.md` — agent navigation/authority rules
+- `docs/roadmap.md` — single execution checklist
+- `docs/specs/` — normative bounded specifications
+- `docs/research/` — decision-support research, not implementation authority
+- `schemas/` — machine-readable contracts when actually needed
+- `evals/` / `evidence/` — compact reproducible validation artifacts
+- `site/` — optional pinned Markdown/Mermaid renderer, non-blocking
 
 ## Research notes
 
-- [`docs/research/apple-local-models.md`](docs/research/apple-local-models.md) — local-model candidate decision.
-- [`docs/research/conditional-memory-architectures.md`](docs/research/conditional-memory-architectures.md) — Engram/PLE/n-gram architectures and why current flagships are outside the local deployment envelope.
-- [`docs/specs/local-model-admission.md`](docs/specs/local-model-admission.md) — hard admission gates for any local model.
+- [`docs/research/stacked-local-models.md`](docs/research/stacked-local-models.md) — original local fleet, model stacking/cascades, and the one-small-model rule.
+- [`docs/research/apple-local-models.md`](docs/research/apple-local-models.md) — Apple Silicon candidate assessment.
+- [`docs/research/conditional-memory-architectures.md`](docs/research/conditional-memory-architectures.md) — Engram/PLE/n-gram architectures and practical local implications.
+- [`docs/specs/local-model-admission.md`](docs/specs/local-model-admission.md) — hard local-model decision gate.
 
 ## Next gate
 
-Do not modify Hermes or Pi yet. First complete the version/compatibility inventory and run the deliberately small local-model admission check defined in the roadmap.
+Do not modify Hermes or Pi yet. Complete **M0** first, then qualify **one** local model path. If it passes, stop model exploration and move immediately to recoverable token reduction.
