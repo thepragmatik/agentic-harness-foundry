@@ -10,8 +10,9 @@ When artifacts conflict, use this precedence:
 2. active normative specifications in `docs/specs/`;
 3. root `TASKS.md` for execution order and evidence paths;
 4. `docs/roadmap.md` for milestone boundaries;
-5. research notes in `docs/research/`;
-6. README prose.
+5. `docs/architecture.md` for visual/explanatory orientation;
+6. research notes in `docs/research/`;
+7. README prose.
 
 Generated evidence does not silently override a specification; it triggers a decision/spec update.
 
@@ -35,9 +36,11 @@ Unless a pinned compatibility probe proves them unavailable:
 - Hermes current-session context uses one selected `ContextEngine`; LCM is the planned engine.
 - Hermes cross-session durable memory uses one selected external `MemoryProvider`; Mnemosyne provider mode is planned. Do not expose the same memory bank through provider + MCP by default.
 - Hermes hooks/middleware may provide telemetry/transformation/risk signals, but fail-open callback paths are not sole mandatory-security enforcement points.
+- Policy-controlled external inference goes through a **localhost OpenAI-compatible gateway** selected through Hermes' supported custom-provider surface. Direct provider fallback is not allowed for requests/classes that require the gateway.
 - Hermes→Pi uses Pi's documented **RPC mode over stdin/stdout**. Do not couple the bridge to Pi's internal/in-progress `AgentHarness` APIs.
-- Unattended Pi runs behind a real OS/container/micro-VM policy boundary. Pi project trust, prompts and `--offline` are not sandboxes.
-- Pi project extensions/skills/templates/context files are disabled for the base worker and added back only through an explicit spec/task.
+- Unattended Pi defaults to **whole-process OCI-container containment** with a disposable workspace, no canonical-repo write authority, no external-provider credentials and no unrestricted internet. If no suitable OCI runtime exists, stop for an operator decision rather than silently switching sandbox architecture.
+- Pi model calls use a custom OpenAI-compatible provider pointed at the policy gateway when external inference is required.
+- Pi project extensions/skills/templates/themes/context files are disabled for the base worker and added back only through an explicit spec/task.
 - The trusted LSP base does not depend on an arbitrary third-party Pi extension. Start read-only with diagnostics/definition/references/symbols; mutation/refactor support is a later promotion.
 - Local model runtime is llama.cpp/Metal. Granite 4.2-8B Q6_K is the first admission candidate; Q5_K_M is triggered only by a concrete operational limitation; Empero Qwen3.8-9B-Distill is the single challenger if Granite fails.
 
@@ -45,16 +48,16 @@ Unless a pinned compatibility probe proves them unavailable:
 
 For small bounded work, use the existing normative spec plus root `TASKS.md`; do not create another recap/task document.
 
-Create a new `spec.md` only when a genuinely new bounded workstream is introduced. It MUST contain:
+Create a new normative spec only when a genuinely new bounded workstream introduces an interface, trust/security boundary, compatibility dependency or promotion gate. It MUST contain:
 
 - desired outcome and non-goals;
-- invariants;
+- invariants/selected integration surface;
 - compatibility target;
 - measurable acceptance criteria;
 - rollback/disable path;
-- only the references needed to justify the design.
+- only the primary references needed to justify the design.
 
-Create `plan.md` only when multiple dependent implementation paths/migrations exist. ADRs are only for durable system/security/source-of-truth/dependency decisions.
+Create `plan.md` only when multiple dependent migration paths remain after the spec. ADRs are only for durable system/security/source-of-truth/dependency decisions.
 
 See `docs/spec-lite.md`.
 
@@ -66,9 +69,10 @@ To limit token consumption:
 2. Read the current item in root `TASKS.md`.
 3. Read only the governing spec named by that milestone/task.
 4. Read `docs/build-readiness.md` only when a compatibility/readiness decision is relevant.
-5. Load research notes only when the active task explicitly needs their evidence.
-6. Never load the entire evidence or research tree into context pre-emptively.
-7. Persist findings to files; chat/session memory is not project state.
+5. Use `docs/architecture.md` when a visual boundary map is useful.
+6. Load research notes only when the active task explicitly needs their evidence.
+7. Never load the entire evidence or research tree into context pre-emptively.
+8. Persist findings to files; chat/session memory is not project state.
 
 ## Evidence discipline
 
