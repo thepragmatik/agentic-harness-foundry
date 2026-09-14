@@ -9,11 +9,10 @@ When artifacts conflict, use this precedence:
 1. accepted ADRs in `docs/adr/`;
 2. active normative specifications in `docs/specs/`;
 3. root `TASKS.md` for execution order and evidence paths;
-4. `docs/testing-strategy.md` for test ordering/circuit-breakers;
-5. `docs/roadmap.md` for milestone boundaries;
-6. `docs/architecture.md` for visual/explanatory orientation;
-7. research notes in `docs/research/`;
-8. README prose.
+4. `docs/roadmap.md` for milestone boundaries;
+5. `docs/architecture.md` for visual/explanatory orientation;
+6. research notes in `docs/research/`;
+7. README prose.
 
 Generated evidence does not silently override a specification; it triggers a decision/spec update.
 
@@ -23,8 +22,6 @@ Generated evidence does not silently override a specification; it triggers a dec
 - Do not modify Hermes, Pi, LCM, Mnemosyne, llama.cpp, provider settings, model artifacts or host security controls unless the active task/spec explicitly authorizes the change.
 - Every implementation touching an upstream project MUST pin the installed/tested release/commit/package and record a compatibility probe.
 - **Prefer documented public/stable surfaces over upstream internals.** If a task would require an undocumented/private API, stop and revise the spec.
-- **Cheapest falsifier first.** Follow `docs/testing-strategy.md`; do not jump to a soak/full benchmark/end-to-end mission while a smaller deterministic test can still disprove the design.
-- Change one material variable at a time. After two failed attempts on the same hypothesis, stop/revise rather than tuning indefinitely.
 - Security-critical authorization and egress decisions MUST NOT depend solely on probabilistic model output or a documented fail-open callback path.
 - Context compression MUST retain recoverable provenance to original evidence where practical.
 - A new model/component MUST have a simpler baseline and a measurable promotion gate.
@@ -32,6 +29,8 @@ Generated evidence does not silently override a specification; it triggers a dec
 - **Runtime evidence is local/untracked and sensitive by default.** Follow `docs/evidence-policy.md`; do not commit raw configs/logs/databases/prompts/secrets to this public repo.
 - Prefer reversible, isolated experiments before host-level changes.
 - A task reaching its `Stop if` condition MUST stop. Do not invent a new architecture during execution to get around the gate.
+- **Do not commit self-build work directly to `main`.** Record the starting commit and use a dedicated build branch/worktree. If a safe branch/worktree cannot be created, stop for operator action.
+- Run `python3 scripts/check_repo.py` before the self-build starts and after source-of-truth Markdown/task-graph changes. A failing repo check blocks further execution until corrected.
 
 ## Stable integration choices already made
 
@@ -72,13 +71,23 @@ To limit token consumption:
 1. Read this file.
 2. Read the current item in root `TASKS.md`.
 3. Read only the governing spec named by that milestone/task.
-4. Read `docs/testing-strategy.md` before executing non-trivial tests.
-5. Read `docs/evidence-policy.md` before producing/publishing runtime evidence.
-6. Read `docs/build-readiness.md` only when a compatibility/readiness decision is relevant.
-7. Use `docs/architecture.md` when a visual boundary map is useful.
-8. Load research notes only when the active task explicitly needs their evidence.
-9. Never load the entire evidence or research tree into context pre-emptively.
-10. Persist findings to files; chat/session memory is not project state.
+4. Read `docs/testing-strategy.md` before tests and `docs/evidence-policy.md` before producing/publishing runtime evidence.
+5. Read `docs/build-readiness.md` only when a compatibility/readiness decision is relevant.
+6. Use `docs/architecture.md` when a visual boundary map is useful.
+7. Load research notes only when the active task explicitly needs their evidence.
+8. Never load the entire evidence or research tree into context pre-emptively.
+9. Persist findings to files; chat/session memory is not project state.
+
+## Build-start discipline
+
+Before T001:
+
+1. Run `python3 scripts/check_repo.py`; stop on failure.
+2. Optionally run `bash scripts/preflight.sh` for read-only host/tool discovery.
+3. Record `git rev-parse HEAD` as the baseline commit in local evidence.
+4. Confirm the checkout is clean.
+5. Create/use a dedicated build branch/worktree rooted at that commit; do not experiment directly on `main`.
+6. Keep commits small enough to map to a completed task or one coherent specification correction. Do not auto-merge to `main`.
 
 ## Evidence discipline
 
@@ -114,10 +123,6 @@ Use only:
 
 `docs/build-readiness.md` contains evidence-weighted readiness scores. Those scores are advisory and MUST NOT be confused with validation. Target-machine evidence is required to lift operational confidence above the pre-execution cap.
 
-## Self-build bootstrap
-
-When Hermes is used to build Foundry for itself, use `prompts/hermes-bootstrap.md`. The bootstrap prompt delegates task execution while preserving the architecture, fast-feedback and self-hosting safety rules in this repository.
-
 ## Current execution boundary
 
-The repository is ready to begin **M0 only**. Execute root `TASKS.md` from T001. Do not perform M1–M3 changes before their predecessor milestone passes.
+The repository is ready to begin **M0 only**. Execute the build-start discipline above, then root `TASKS.md` from T001. Do not perform M1–M3 changes before their predecessor milestone passes.
