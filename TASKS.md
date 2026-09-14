@@ -215,6 +215,21 @@ Run only after M2 passes. Governing spec: `docs/specs/m3-pi-worker-rpc.md`.
   - Evidence: `evidence/m3/acceptance.json`, `evidence/m3/rollback.md`
   - Stop if: any containment invariant fails.
 
+## Documentation renderer — deferred, non-blocking
+
+This preserves the human-facing documentation requirement without putting site work on the critical M0–M3 path.
+
+- [ ] **T390 Build Markdown/Mermaid HTML renderer**
+  - Markdown under `docs/` remains the sole authored source of truth; do not duplicate prose into HTML.
+  - Implement thin HTML base page(s) plus renderer/style assets that load local Markdown and render fenced Mermaid diagrams.
+  - Pin/vendor the Markdown parser, Mermaid renderer and HTML sanitizer; no mutable runtime CDN dependency.
+  - Use Mermaid strict/security-safe mode, a restrictive CSP, semantic text labels in addition to color, and an accessible consistent palette.
+  - Add a cheap static smoke test proving one Markdown page and one Mermaid diagram render while raw HTML/script injection from Markdown is neutralized.
+  - Evidence: `evidence/docs/site-smoke.md` plus implementation diff.
+  - Stop if: the implementation requires duplicated authored content, external runtime fetches, or weakens Markdown/diagram sanitization.
+
+T390 may be deferred until M3 is stable and does not gate M0–M3 validation.
+
 ## M4 — optional routing
 
 - [ ] **T401 Evaluate accumulated routing regret**
