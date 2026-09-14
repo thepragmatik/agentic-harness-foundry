@@ -31,6 +31,7 @@ REQUIRED = [
     "docs/specs/m2-context-memory-security.md",
     "docs/specs/m3-pi-worker-rpc.md",
     "prompts/hermes-bootstrap.md",
+    "scripts/check_repo.py",
     "scripts/preflight.sh",
 ]
 
