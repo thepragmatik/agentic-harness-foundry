@@ -1,67 +1,88 @@
 # Agent Guide
 
-This repository is designed for both human maintainers and agentic execution. Agents MUST treat this file as navigation guidance, not as a substitute for the governing specifications.
+This repository is designed for both human maintainers and agentic execution. Agents MUST treat this file as navigation guidance, not as a substitute for governing specifications and evidence.
 
 ## Authority order
 
 When artifacts conflict, use this precedence:
 
 1. accepted ADRs in `docs/adr/`;
-2. active specifications in `docs/specs/`;
-3. active bounded-work artifacts under `specs/`;
-4. `docs/roadmap.md`;
+2. active normative specifications in `docs/specs/`;
+3. root `TASKS.md` for execution order and evidence paths;
+4. `docs/roadmap.md` for milestone boundaries;
 5. research notes in `docs/research/`;
 6. README prose.
 
-Generated evidence never overrides an accepted specification by itself; it triggers a decision/update.
+Generated evidence does not silently override a specification; it triggers a decision/spec update.
 
 ## Non-negotiable rules
 
 - Do not inherit implementation assumptions from prior Hermes/Pi prototype repositories.
-- Do not modify Hermes, Pi, LCM, Mnemosyne, llama.cpp, MLX, provider settings, or host security controls unless an active spec explicitly authorizes the change.
-- Every implementation touching an upstream project MUST pin the tested release/commit and record a compatibility probe.
-- Security-critical authorization and egress decisions MUST NOT depend solely on probabilistic model output.
-- Context compression MUST retain recoverable provenance to the original evidence where practical.
-- A new component MUST have a simpler baseline and a measurable promotion gate.
-- Never mark a task validated without reproducible evidence.
+- Do not modify Hermes, Pi, LCM, Mnemosyne, llama.cpp, provider settings, model artifacts or host security controls unless the active task/spec explicitly authorizes the change.
+- Every implementation touching an upstream project MUST pin the installed/tested release/commit/package and record a compatibility probe.
+- **Prefer documented public/stable surfaces over upstream internals.** If a task would require an undocumented/private API, stop and revise the spec.
+- Security-critical authorization and egress decisions MUST NOT depend solely on probabilistic model output or a documented fail-open callback path.
+- Context compression MUST retain recoverable provenance to original evidence where practical.
+- A new model/component MUST have a simpler baseline and a measurable promotion gate.
+- Never mark a task validated without its declared evidence.
 - Prefer reversible, isolated experiments before host-level changes.
+- A task reaching its `Stop if` condition MUST stop. Do not invent a new architecture during execution to get around the gate.
+
+## Stable integration choices already made
+
+Unless a pinned compatibility probe proves them unavailable:
+
+- Hermes current-session context uses one selected `ContextEngine`; LCM is the planned engine.
+- Hermes cross-session durable memory uses one selected external `MemoryProvider`; Mnemosyne provider mode is planned. Do not expose the same memory bank through provider + MCP by default.
+- Hermes hooks/middleware may provide telemetry/transformation/risk signals, but fail-open callback paths are not sole mandatory-security enforcement points.
+- Hermes→Pi uses Pi's documented **RPC mode over stdin/stdout**. Do not couple the bridge to Pi's internal/in-progress `AgentHarness` APIs.
+- Unattended Pi runs behind a real OS/container/micro-VM policy boundary. Pi project trust, prompts and `--offline` are not sandboxes.
+- Pi project extensions/skills/templates/context files are disabled for the base worker and added back only through an explicit spec/task.
+- The trusted LSP base does not depend on an arbitrary third-party Pi extension. Start read-only with diagnostics/definition/references/symbols; mutation/refactor support is a later promotion.
+- Local model runtime is llama.cpp/Metal. Granite 4.2-8B Q6_K is the first admission candidate; Q5_K_M is triggered only by a concrete operational limitation; Empero Qwen3.8-9B-Distill is the single challenger if Granite fails.
 
 ## Lightweight specification workflow
 
-For a bounded change, create `specs/<nnn>-<slug>/`.
+For small bounded work, use the existing normative spec plus root `TASKS.md`; do not create another recap/task document.
 
-Minimum small-change artifact set:
+Create a new `spec.md` only when a genuinely new bounded workstream is introduced. It MUST contain:
 
-- `spec.md` — outcome, invariants, acceptance criteria, non-goals;
-- `tasks.md` — atomic checklist with verification commands/evidence.
+- desired outcome and non-goals;
+- invariants;
+- compatibility target;
+- measurable acceptance criteria;
+- rollback/disable path;
+- only the references needed to justify the design.
 
-Add `plan.md` only when architecture, migration, dependency, or rollback choices are non-trivial.
+Create `plan.md` only when multiple dependent implementation paths/migrations exist. ADRs are only for durable system/security/source-of-truth/dependency decisions.
 
-Do not create clarification/analyze/checklist documents automatically. Add them only when the work genuinely needs them.
+See `docs/spec-lite.md`.
 
 ## Agent reading discipline
 
 To limit token consumption:
 
-1. Read this file and the active `tasks.md`.
-2. Read the active `spec.md`.
-3. Read only referenced architecture/ADR sections needed for the current task.
-4. Avoid loading whole research directories or historical evidence into context.
-5. Persist findings to files; do not rely on chat/session memory as project state.
+1. Read this file.
+2. Read the current item in root `TASKS.md`.
+3. Read only the governing spec named by that milestone/task.
+4. Read `docs/build-readiness.md` only when a compatibility/readiness decision is relevant.
+5. Load research notes only when the active task explicitly needs their evidence.
+6. Never load the entire evidence or research tree into context pre-emptively.
+7. Persist findings to files; chat/session memory is not project state.
 
 ## Evidence discipline
 
-Each completed implementation task SHOULD point to one of:
+Each completed task points to its declared path under `evidence/`, `evals/`, `schemas/` or tests. Suitable evidence includes:
 
 - deterministic test output;
-- benchmark result;
+- compact benchmark result;
 - compatibility probe;
 - schema validation;
-- security test;
+- security negative test;
 - reproducible command transcript;
-- manual approval when no machine-verifiable check exists.
+- manual approval only when no machine-verifiable check exists.
 
-Keep bulky raw logs out of agent prompts. Store them under `evidence/` or an external artifact store and reference them by path/hash.
+Keep bulky raw logs out of routine agent prompts. Store them as files/artifacts and reference by path/hash.
 
 ## Status vocabulary
 
@@ -75,8 +96,12 @@ Use only:
 - `rejected`
 - `superseded`
 
-`validated` means the declared acceptance criteria were actually run against the pinned environment.
+`specified` means implementation intent is unambiguous enough to execute the declared next task. `validated` means the declared acceptance criteria were actually run against the pinned environment.
+
+## Build-readiness rule
+
+`docs/build-readiness.md` contains evidence-weighted readiness scores. Those scores are advisory and MUST NOT be confused with validation. Target-machine evidence is required to lift operational confidence above the pre-execution cap.
 
 ## Current execution boundary
 
-The repository is in research/specification mode. Do not perform production harness uplift work until the roadmap's compatibility and baseline gates are complete.
+The repository is ready to begin **M0 only**. Execute root `TASKS.md` from T001. Do not perform M1–M3 changes before their predecessor milestone passes.
