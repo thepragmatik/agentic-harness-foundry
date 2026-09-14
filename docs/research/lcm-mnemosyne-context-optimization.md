@@ -74,15 +74,15 @@ Upstream explicitly describes this as best-effort: ambiguous proof falls back to
 
 **Foundry consequence:** self-echo suppression is one of the few features specifically complementary to LCM, but it is an experiment, not correctness state.
 
-### 5. Consolidated Mnemosyne rows are already excluded from hot context by default
+### 5. Consolidated Mnemosyne rows are excluded from hot context by default
 
 Current Mnemosyne excludes `consolidated_at` working-memory rows from `get_context()` prompt injection unless `MNEMOSYNE_CONTEXT_INCLUDE_CONSOLIDATED=1` is set. Consolidated information remains recallable through episodic retrieval.
 
 **Foundry consequence:** keep consolidated hot-context inclusion **off**. Turning it back on defeats a major token benefit of consolidation.
 
-### 6. User-only autosync is now the safer default
+### 6. User-only autosync is the safer default
 
-Mnemosyne changed Hermes autosync defaults to user turns only to avoid assistant-transcript noise.
+Current Mnemosyne documentation/changelog defaults Hermes transcript synchronization toward user turns only, specifically to reduce assistant-transcript noise.
 
 **Foundry consequence:** keep `sync_roles: [user]` unless a test proves assistant turns contain durable information that cannot be represented as explicit memories.
 
@@ -92,19 +92,25 @@ Current Mnemosyne code implements dozens of memory, graph, persona, sync and dia
 
 **Foundry consequence:** tool-surface minimisation is a low-risk token optimisation. Ordinary sessions should not carry graph/sync/export/persona schemas unless needed.
 
-### 8. Mnemosyne's persona layer can become an always-on prompt tax
+### 8. Persona is environment-controlled and should remain off initially
 
-Current generated configuration enables persona support and exposes a persona token cap. Persona is useful for stable identity/behavior rules, but it can duplicate user/profile facts already available through durable memory.
+Mnemosyne's current persona documentation is unusually important: although generated/core configuration exposes `persona_enabled`, the live Hermes persona prompt path reads environment variables directly. Upstream explicitly says `config.yaml` does not control that prompt path. `MNEMOSYNE_PERSONA_ENABLED` defaults OFF; when enabled, the prompt has its own token cap (currently documented as 1500 by the live persona path).
 
-**Foundry consequence:** start with persona injection disabled in the token-minimising profile. Re-enable it only if the new-session durable-fact fixture demonstrates a real stable-identity gap.
+**Foundry consequence:** do not try to disable persona with a YAML key. Keep `MNEMOSYNE_PERSONA_ENABLED=0` during the token-minimising baseline. Re-enable only if a stable-identity fixture demonstrates a gap.
 
-### 9. Local embeddings are the correct Foundry default
+### 9. Auto-sleep/consolidation defaults are version-sensitive
+
+Current Mnemosyne source and documentation expose both core `auto_sleep_enabled` / `MNEMOSYNE_AUTO_SLEEP_ENABLED` and Hermes-provider compatibility keys such as `auto_sleep` plus `sleep_threshold`. Upstream changelog/source have changed behavior and defaults over time; current provider source also documents precedence across kwargs/config/defaults.
+
+**Foundry consequence:** do not prescribe an auto-sleep cadence before T004/T201. Record the installed effective value and threshold first, then test consolidation as its own variable.
+
+### 10. Local embeddings are the correct Foundry default
 
 The Hermes wrapper supports local FastEmbed/sqlite-vec. Remote embedding endpoints receive memory text and recall queries.
 
 **Foundry consequence:** local embeddings are the privacy default and avoid a second data-egress path. Remote embeddings require an explicit later policy decision.
 
-### 10. One local Granite service can potentially serve both summary paths
+### 11. One local Granite service can potentially serve both summary paths
 
 Hermes auxiliary compression accepts a custom OpenAI-compatible `base_url`. LCM uses Hermes' auxiliary summarisation path when no LCM-specific summary model is selected. Mnemosyne can independently use an OpenAI-compatible endpoint for consolidation/fact-extraction with `MNEMOSYNE_LLM_BASE_URL` / `MNEMOSYNE_LLM_MODEL`.
 
@@ -114,11 +120,9 @@ Hermes auxiliary compression accepts a custom OpenAI-compatible `base_url`. LCM 
 
 ## Recommended Phase-A topology
 
-The starting profile deliberately enables the minimum number of automatic context mechanisms.
+The starting profile deliberately enables the minimum number of automatic context mechanisms. It is a **shape**, not a paste-and-run configuration: exact installed keys must be verified first.
 
 ### Hermes configuration skeleton
-
-Apply only after T004/T201 confirms the installed versions accept the keys shown.
 
 ```yaml
 compression:
@@ -129,7 +133,7 @@ context:
   engine: lcm
 
 # Set ONE explicit threshold source only after M0 establishes the desired
-# active-prompt trigger. Example only:
+# active-prompt trigger. Example only; 0.50 is not a recommendation:
 # lcm:
 #   context_threshold: 0.50
 
@@ -143,25 +147,17 @@ memory:
   user_profile_enabled: false
 
   mnemosyne:
-    # Mnemosyne key names/effective defaults have moved between releases.
-    # Confirm these names against the installed wrapper before applying.
-    auto_sleep: true
-    sleep_threshold: 20
-
-    # Keep automatic transcript capture user-biased.
+    # Keep automatic transcript capture user-biased, if the installed wrapper
+    # exposes this config key.
     sync_roles:
       - user
 
-    # Durable facts should be made global/canonical intentionally rather than
-    # making every captured memory cross-session by default.
+    # Durable facts become global/canonical intentionally rather than making
+    # every automatically captured memory cross-session by default.
     default_scope: session
 
-    # Start without an always-on persona block. Re-enable only if measured need.
-    persona_enabled: false
-
-    # Current upstream default is 2000 chars. Keep it initially; if C4 shows
-    # excessive memory injection, halve it once and rerun the recall fixture.
-    prefetch_content_chars: 2000
+    # Do NOT hard-code auto_sleep/sleep_threshold here until T004/T201 records
+    # the installed provider's effective control surface/defaults.
 
     # Filter only obvious technical noise. Broad regexes can destroy evidence.
     ignore_patterns:
@@ -178,6 +174,8 @@ memory:
       - mnemosyne_stats
       - mnemosyne_recall_diagnostics
 ```
+
+Do not add `persona_enabled` to this YAML as a control for the live prompt path; use the environment switch below.
 
 ### LCM environment — Phase A
 
@@ -207,6 +205,9 @@ MNEMOSYNE_EMBEDDINGS_VIA_API=false
 # Consolidated material remains recallable but should not re-enter hot context.
 MNEMOSYNE_CONTEXT_INCLUDE_CONSOLIDATED=0
 
+# Avoid an always-on persona system-prompt block during baseline measurement.
+MNEMOSYNE_PERSONA_ENABLED=0
+
 # Avoid a wider retrieval pipeline before proving the default path insufficient.
 MNEMOSYNE_POLYPHONIC_RECALL=0
 MNEMOSYNE_ENHANCED_RECALL=0
@@ -215,9 +216,11 @@ MNEMOSYNE_ENHANCED_RECALL=0
 MNEMOSYNE_SELF_ECHO_ENABLED=0
 ```
 
-### Version rule
+Do **not** force `MNEMOSYNE_AUTO_SLEEP_ENABLED` in Phase A. Record the installed effective value first; O4 below is the controlled consolidation experiment.
 
-Mnemosyne's generated configuration currently lists more than 100 keys plus environment-only controls, and several effective defaults have historically differed from declared defaults. The installed package/runtime is authoritative.
+### Version/effective-config rule
+
+Mnemosyne's configuration surface is large and some historical declared defaults have differed from effective runtime behavior. The installed package/runtime is authoritative.
 
 Before applying this profile:
 
@@ -228,6 +231,8 @@ hermes config get memory.mnemosyne
 hermes mnemosyne version        # when supported by installed wrapper
 lcm_status                      # after one normal Hermes turn
 ```
+
+Also record the environment switches that affect live prompt behavior (`MNEMOSYNE_PERSONA_ENABLED`, `MNEMOSYNE_SELF_ECHO_ENABLED`, embedding mode, and auto-sleep controls) without recording secrets.
 
 If a key is absent/renamed, stop and update this artefact from the pinned installed version rather than guessing.
 
@@ -261,7 +266,7 @@ Use `memory.mnemosyne.tools` to keep only the runtime-confirmed ordinary tools. 
 
 ### O3 — keep automatic capture precise
 
-Keep `sync_roles: [user]`, `default_scope: session`, and conservative `ignore_patterns`.
+Keep `sync_roles: [user]`, `default_scope: session`, and conservative `ignore_patterns` when those keys are supported by the installed wrapper.
 
 Durable cross-session facts should be made `scope=global` or canonical **intentionally** through memory admission, rather than making every auto-captured row global.
 
@@ -271,23 +276,36 @@ Durable cross-session facts should be made `scope=global` or canonical **intenti
 
 **Confidence:** **high** for user-only capture/default-session scope; **medium** for custom regex filters.
 
-### O4 — use consolidation as a prompt-budget boundary
+### O4 — test consolidation as a prompt-budget boundary
 
-Keep auto-sleep enabled and `MNEMOSYNE_CONTEXT_INCLUDE_CONSOLIDATED=0`.
+First record whether auto-sleep is currently enabled, its effective threshold, whether it invokes an LLM, and where that LLM runs. Then run one controlled comparison with consolidation enabled/retained versus disabled, changing no other memory knob.
 
-**Why:** consolidated information remains recallable without continuously competing in working-memory prompt context.
+Keep `MNEMOSYNE_CONTEXT_INCLUDE_CONSOLIDATED=0` in both cases.
 
-**Cheap test:** measure working/consolidated counts, injected context size before/after sleep, and next-session recall.
+**Why:** consolidated information can remain recallable without continuously competing in working-memory prompt context, but consolidation itself may have compute/token cost.
 
-**Confidence:** **high** for excluding consolidated rows; **medium** for the optimal sleep threshold.
+**Cheap test:** measure working/consolidated counts, injected context size before/after the consolidation boundary, consolidation model tokens/calls, and fresh-session recall.
 
-### O5 — test persona injection only if needed
+**Keep if:** prompt/retrieval economics improve without losing durable facts. If consolidation costs more than it saves under the current model path, defer it until the local Granite path exists.
 
-Start persona injection off. If the durable-fact/new-session fixture loses stable identity/preferences despite ordinary recall, re-enable persona with a deliberately small token cap and rerun the same fixture.
+**Confidence:** **high** for excluding consolidated rows; **medium** for enabling/cadencing auto-sleep.
 
-**Why:** persona can improve always-on identity continuity, but it is also an always-on prompt block and may duplicate canonical/global memory.
+### O5 — keep persona off unless it proves unique value
 
-**Confidence:** **medium**; value depends strongly on workload.
+The live Hermes persona path defaults off and is controlled by `MNEMOSYNE_PERSONA_ENABLED`.
+
+If ordinary durable recall loses stable identity/preferences, test persona separately:
+
+```bash
+MNEMOSYNE_PERSONA_ENABLED=1
+# optionally set a deliberately bounded MNEMOSYNE_PERSONA_TOKEN_CAP
+```
+
+Rerun exactly the same fresh-session fixture.
+
+**Keep if:** persona solves a repeatable stable-identity gap that ordinary canonical/global memories do not solve, and its recurring prompt cost is justified.
+
+**Confidence:** **medium**; value is workload-specific.
 
 ### O6 — test Mnemosyne self-echo suppression against LCM
 
@@ -370,13 +388,13 @@ MNEMOSYNE_LLM_MODEL=<llama-server model id>
 
 ### O10 — tune prefetch size only after deduplication
 
-Current Mnemosyne generated configuration defaults `prefetch_content_chars` to 2000. Do not immediately shrink it: first eliminate duplicated stores/tools/persona/self-echo.
+Current Mnemosyne configuration exposes a prefetch-content cap (current generated reference shows 2000 characters by default). Do not immediately shrink it: first eliminate duplicated stores/tools/persona/self-echo.
 
-If C4 still shows excessive injected memory, test **one** smaller value (for example 1000 chars) on the same durable-fact fixture.
+If C4 still shows excessive injected memory, test **one** smaller value (for example half the installed default) on the same durable-fact fixture.
 
 **Keep if:** prompt tokens fall with no recall-answer degradation.
 
-**Confidence:** **medium**; exact value is workload-dependent.
+**Confidence:** **medium**; exact value is workload-dependent and key naming must be confirmed from the installed wrapper.
 
 ---
 
@@ -390,7 +408,7 @@ If C4 still shows excessive injected memory, test **one** smaller value (for exa
 | LCM assertion extraction | **OFF** | another structured-memory/extraction surface and extra model calls |
 | LCM threshold full sweep | **OFF** | may spend many synchronous summary calls; unnecessary for baseline |
 | LCM dynamic leaf chunking | **OFF** | upstream recommends threshold/tail/externalization as first tuning knobs |
-| Mnemosyne persona injection | **OFF initially** | always-on context cost; may duplicate global/canonical memories |
+| Mnemosyne persona injection | **OFF** | live prompt path defaults off; recurring context cost must prove unique value |
 | Mnemosyne polyphonic recall | **OFF** | upstream measured better phrasing tolerance but wider irrelevant recall; not a free win |
 | Mnemosyne enhanced recall | **OFF** | extra pipeline complexity; upstream isolated small-corpus probes showed no improvement in one published comparison |
 | consolidated rows in hot context | **OFF** | defeats consolidation's context-budget benefit |
@@ -432,7 +450,7 @@ Measure at four checkpoints:
 
 1. before LCM compaction;
 2. after one LCM compaction;
-3. after Mnemosyne consolidation/sleep;
+3. after Mnemosyne consolidation/sleep when O4 is being tested;
 4. in a fresh session.
 
 | Metric | Desired direction |
@@ -473,9 +491,10 @@ This is intentionally a small deterministic fixture. Do not turn it into a bench
 | user-only autosync + intentional global scope | medium | low | **P0** | **high** |
 | consolidated rows excluded from hot context | medium | low | **P0** | **high** |
 | local embeddings | privacy + modest latency/egress benefit | low | **P0** | **high** |
-| persona off initially | medium | medium if identity facts are under-recalled | **P0** | **medium** |
+| persona kept off | avoids recurring prompt block | low | **P0** | **high** for baseline |
 | LCM large-output externalization | very high on tool-heavy sessions | low with raw refs | **P1** | **high** |
 | Mnemosyne self-echo suppression | medium | medium | **P1** | **medium** |
+| consolidation/auto-sleep tuning | medium-high | medium | **P1** | **medium** |
 | LCM fresh-tail token cap | medium | medium | **P1 only if needed** | **medium** |
 | one Granite service for both summary paths | high paid-token upside | medium | **P1 after M1** | **medium-high architecture / local evidence pending** |
 | smaller Mnemosyne prefetch cap | medium | medium | **P1 only if injection still high** | **medium** |
@@ -493,8 +512,8 @@ This is intentionally a small deterministic fixture. Do not turn it into a bench
 4. disable built-in MEMORY/USER injection; re-run canary
 5. shrink Mnemosyne tool surface; measure schema/prompt delta
 6. prove LCM compaction + exact drill-down recovery
-7. prove Mnemosyne sleep + fresh-session durable recall
-8. test persona only if stable facts are missing
+7. measure installed Mnemosyne consolidation behavior; test O4 only if useful
+8. keep persona off unless stable identity recall proves insufficient
 9. test self-echo suppression once
 10. if tool payloads dominate, enable LCM externalization
 11. if live tail remains oversized, test one fresh-tail token cap
@@ -515,6 +534,7 @@ Do **not** tune retrieval weights, polyphonic voices, LCM chunking, rollups, cac
 - LCM operator guide: https://github.com/stephenschoettler/hermes-lcm/blob/main/docs/operator-guide.md
 - LCM configuration source: https://github.com/stephenschoettler/hermes-lcm/blob/main/config.py
 - Mnemosyne canonical Hermes integration: https://github.com/mnemosyne-oss/mnemosyne/blob/main/docs/hermes-integration.md
+- Mnemosyne persona runtime notes: https://github.com/mnemosyne-oss/mnemosyne/blob/main/docs/persona.md
 - Mnemosyne generated configuration reference: https://github.com/mnemosyne-oss/mnemosyne/blob/main/docs/api/configuration.mdx
 - Mnemosyne architecture / retrieval: https://github.com/mnemosyne-oss/mnemosyne/blob/main/docs/architecture.md
 - Mnemosyne changelog / measured recall notes: https://github.com/mnemosyne-oss/mnemosyne/blob/main/CHANGELOG.md
