@@ -30,7 +30,7 @@ Design and validate an agentic harness that:
 To keep the decision surface small, the current local-model programme is intentionally constrained:
 
 - **Runtime:** `llama.cpp` / Metal only. MLX is out of scope unless a future ADR reopens it.
-- **Weight quantization:** `Q6_K` (or a documented Q6-equivalent only if plain Q6_K is unavailable).
+- **Weight quantization:** `Q6_K` is the quality reference; `Q5_K_M` is allowed only when it materially improves sustained throughput or context/runtime headroom without a critical utility-quality regression.
 - **Host:** Apple Silicon laptop with 128 GB unified memory.
 - **Inference allocation:** **28 GB hard planning envelope** for model weights + runtime state + KV/cache required by the local inference service. The remaining system memory is reserved for Hermes, Pi, LSPs, builds/tests, browser/tooling, and macOS.
 - **Admission:** a model MUST have credible llama.cpp support and MUST pass a sustained-session probe on the target Mac before integration work begins.
@@ -39,8 +39,8 @@ To keep the decision surface small, the current local-model programme is intenti
 
 - **Context:** LCM is the leading working-context candidate, subject to recall/cost/cache-stability evaluation.
 - **Durable memory:** Mnemosyne is the leading cross-session candidate, subject to a strict authority contract with LCM and local/private embeddings.
-- **Local utility model:** the decision has narrowed to the **9B Q6 class**. `empero-ai/Qwen3.8-9B-Distill` is the highest-upside candidate; official `Qwen3.5-9B` is the conservative control. Neither is promoted until the short sustained-session qualification passes on the target Mac.
-- **Large conditional-memory models:** Qwen3.8-Flash-Next and DeepSeek-V4.1-Flash are architecture research inputs, **not local deployment candidates** under the 28 GB/Q6/stock-llama.cpp constraint.
+- **Local utility model:** the decision has narrowed to the **9B Q5/Q6 class**. `empero-ai/Qwen3.8-9B-Distill` is the highest-upside candidate; official `Qwen3.5-9B` is the conservative control. Neither is promoted until the short sustained-session qualification passes on the target Mac.
+- **Large conditional-memory models:** Qwen3.8-Flash-Next and DeepSeek-V4.1-Flash are architecture research inputs, **not local deployment candidates** under the 28 GB/llama.cpp constraint.
 - **Routing:** deterministic eligibility first; learned routing is an optional experiment, not a roadmap assumption.
 - **Security:** provenance + deterministic policy + least privilege + containment; model-based detectors are advisory.
 - **Coding:** Pi is expected to operate as a contained worker behind Hermes, with LSP/compiler/test evidence used for verification.
