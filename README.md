@@ -37,9 +37,9 @@ Design and validate an agentic harness that:
 
 - **Context:** LCM is the leading current-session context/compaction candidate, subject to measured recall/cache/token benefit.
 - **Durable memory:** Mnemosyne is the leading cross-session candidate, with an explicit non-overlap contract with LCM.
-- **Resident local utility model:** start with `empero-ai/Qwen3.8-9B-Distill` Q6_K. Stop model selection if it passes the compact admission gate.
-- **Q5:** try only if Q6 needs more sustained throughput/headroom.
-- **Fallbacks:** Gemma 4 E4B only for an efficiency failure; official Qwen3.5-9B only for a quality/reliability failure.
+- **Resident local utility model:** qualify official `ibm-granite/granite-4.2-8b-GGUF` Q6_K first. Stop model selection if it passes the compact admission gate.
+- **Q5:** try only if Granite Q6 quality passes but sustained operation needs more throughput/headroom.
+- **One challenger:** `empero-ai/Qwen3.8-9B-Distill` Q6_K is tested only if Granite fails admission.
 - **Original 2–4B fleet:** retained as a **candidate specialist shelf**, not discarded and not benchmarked in parallel. A second model enters only for a measured recurring workload where it materially improves end-to-end operation.
 - **Stacking:** prefer `local attempt -> deterministic verify -> cloud escalation`; avoid always-on multi-model voting/fusion.
 - **Routing:** optional. Collect telemetry first; learned routing exists only if economic regret is proven.
@@ -52,13 +52,13 @@ Only one milestone is active at a time:
 
 ```text
 M0  baseline + deterministic token diet
- -> M1  one local utility model + recoverable context packets
+ -> M1  Granite-first local utility + recoverable context packets
  -> M2  context/memory ownership + deterministic trust/egress
  -> M3  contained Pi + LSP
  -> M4  routing only if telemetry proves value
 ```
 
-See [`docs/roadmap.md`](docs/roadmap.md).
+See [`docs/roadmap.md`](docs/roadmap.md). The executable checklist is root [`TASKS.md`](TASKS.md).
 
 ## Lightweight specifications
 
@@ -76,7 +76,8 @@ Markdown is the authored source of truth. Human-facing HTML will render that sam
 
 - `README.md` — project entry point
 - `AGENTS.md` — agent navigation/authority rules
-- `docs/roadmap.md` — single execution checklist
+- `TASKS.md` — single executable task ledger
+- `docs/roadmap.md` — milestone boundaries and stop rules
 - `docs/specs/` — normative bounded specifications
 - `docs/research/` — decision-support research, not implementation authority
 - `schemas/` — machine-readable contracts when actually needed
@@ -85,11 +86,11 @@ Markdown is the authored source of truth. Human-facing HTML will render that sam
 
 ## Research notes
 
-- [`docs/research/stacked-local-models.md`](docs/research/stacked-local-models.md) — original local fleet, model stacking/cascades, and the one-small-model rule.
+- [`docs/research/stacked-local-models.md`](docs/research/stacked-local-models.md) — original local fleet, model stacking/cascades, and the one-specialist rule.
 - [`docs/research/apple-local-models.md`](docs/research/apple-local-models.md) — Apple Silicon candidate assessment.
 - [`docs/research/conditional-memory-architectures.md`](docs/research/conditional-memory-architectures.md) — Engram/PLE/n-gram architectures and practical local implications.
 - [`docs/specs/local-model-admission.md`](docs/specs/local-model-admission.md) — hard local-model decision gate.
 
 ## Next gate
 
-Do not modify Hermes or Pi yet. Complete **M0** first, then qualify **one** local model path. If it passes, stop model exploration and move immediately to recoverable token reduction.
+Do not modify Hermes or Pi yet. Execute **T001–T009 in `TASKS.md`** first. Only after M0 passes should Granite 4.2-8B qualification begin.
