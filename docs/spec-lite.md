@@ -4,9 +4,9 @@ Status: `specified`
 
 ## Why this exists
 
-GitHub Spec Kit is useful, mature, and intentionally comprehensive. Its default flow is `Specify -> Plan -> Tasks -> Implement -> Converge`, with optional clarification, analysis, presets, extensions, workflows, and agent integrations.
+GitHub Spec Kit is useful and comprehensive, but repeatedly generating/reading specification, clarification, plan, checklist and task artifacts can consume substantial context for a small infrastructure project.
 
-For this project, the full workflow is deliberately **not** the default because repeated prompt/template expansion can consume substantial agent context for small infrastructure changes. We retain the durable-artifact discipline while reducing mandatory artifacts and re-reading.
+Foundry keeps the durable-artifact discipline while using **one execution ledger and a small set of normative specs**.
 
 Reference: https://github.github.com/spec-kit/
 
@@ -16,101 +16,103 @@ Reference: https://github.github.com/spec-kit/
 research evidence
       |
       v
-   spec.md
-      |
-      +---- plan.md   (only when non-trivial)
+normative spec (only when needed)
       |
       v
-  tasks.md
+root TASKS.md item
       |
       v
 experiment / implementation
       |
       v
- evidence
+compact evidence
       |
       v
-promotion / rejection ADR
+promote / reject / revise spec
 ```
 
-## Artifact contract
+## Source-of-truth contract
 
-### `spec.md` — mandatory
+### `TASKS.md` — single execution ledger
 
-Keep it concise. It MUST contain:
+There is only one active task ledger: root `TASKS.md`.
+
+Tasks MUST be:
+
+- atomic and ordered;
+- bound to a governing spec when they change architecture/security/integration behavior;
+- explicit about evidence path;
+- explicit about `Stop if` conditions;
+- small enough to execute without loading the whole repository.
+
+Do **not** create another `tasks.md`, checklist or status recap for routine execution.
+
+### `docs/specs/*.md` — normative contracts
+
+Create or update a normative spec only when work needs an explicit interface, security/trust boundary, data contract, compatibility target or measurable promotion gate.
+
+A spec SHOULD contain only:
 
 1. **Status**
-2. **Problem / desired outcome**
-3. **Scope and non-goals**
-4. **Invariants** — what must never be violated
-5. **Acceptance criteria** — measurable pass/fail conditions
-6. **Compatibility target** — exact upstream version/commit where applicable
+2. **Desired outcome**
+3. **Scope / non-goals**
+4. **Compatibility target**
+5. **Invariants / selected integration surface**
+6. **Acceptance tests / promotion criteria**
 7. **Rollback / disable path**
-8. **References** — only sources directly needed to justify the design
+8. **Primary references**
 
-Target size: normally 1–3 pages, not a research report.
+Target size: normally a few pages, not a research report.
 
-### `plan.md` — conditional
+Current normative specs:
 
-Create only if at least one is true:
+- `docs/specs/local-model-admission.md`
+- `docs/specs/m2-context-memory-security.md`
+- `docs/specs/m3-pi-worker-rpc.md`
 
-- multiple viable implementation approaches exist;
-- data/schema migration is required;
-- the change crosses trust/security boundaries;
-- multiple upstream components interact;
-- rollback is non-trivial;
-- staged rollout is required.
+### `plan.md` — exceptional
 
-It SHOULD contain architecture choices, rejected alternatives, dependency order, and rollback mechanics. Do not restate the full spec.
+Do not create a plan by default. Add one only when a single spec still contains multiple dependent migration sequences that cannot be expressed clearly in `TASKS.md`.
 
-### `tasks.md` — mandatory
-
-Tasks MUST be atomic, ordered, checkable, and small enough for an agent to execute without loading the entire repository.
-
-Each task uses this compact form:
-
-```markdown
-- [ ] T012 Add context-packet schema
-  - Input: `docs/specs/context-packet.md`
-  - Touch: `schemas/context-packet.schema.json`
-  - Verify: `python -m pytest evals/context/test_schema.py`
-  - Evidence: `evidence/context/T012-schema.txt`
-  - Stop if: schema cannot represent provenance without raw secret material
-```
+If created, it MUST NOT restate the full spec.
 
 ### ADR — only for durable architectural decisions
 
-An ADR is required when a decision changes a system boundary, security invariant, source-of-truth rule, or major dependency. Do not create ADRs for routine implementation details.
+An ADR is required only when a decision changes a long-lived system/security boundary, source-of-truth rule or mandatory dependency and the rationale needs to survive after the implementation spec is superseded.
+
+Do not create ADRs for routine implementation choices.
 
 ## Token-budget rules for agents
 
-- Do not load all specs or research notes pre-emptively.
-- `tasks.md` points to the exact spec/ADR sections needed for each task.
-- Research is summarized into decision tables; raw source dumps are not included in routine execution context.
-- Evidence files should contain machine-readable summaries plus links/paths to bulky raw logs.
-- Update existing artifacts rather than generating parallel recap documents.
-- A spec SHOULD state a maximum context bundle for its implementation agent when relevant.
+- Start from `AGENTS.md` + the current root `TASKS.md` item.
+- Read only the governing spec named by that task.
+- Read research notes only when the task needs the evidence behind a decision.
+- Do not load all specs, research or evidence pre-emptively.
+- Keep bulky logs out of prompts; reference files by path/hash.
+- Update an existing authoritative artifact rather than generating a parallel recap.
+- Stop when a task gate is reached; do not spend context inventing alternatives during execution.
 
 ## Relationship to GitHub Spec Kit
 
-We borrow these ideas:
+We retain:
 
 - intent before implementation;
-- durable Markdown artifacts;
-- explicit specification, plan, and task phases;
-- convergence against acceptance criteria;
-- agent-independent source-of-truth files.
+- durable Markdown source of truth;
+- explicit acceptance criteria;
+- agent-independent specifications;
+- convergence against evidence.
 
 We intentionally omit by default:
 
-- full CLI initialization;
+- Spec Kit CLI initialization;
 - generated constitution prompts;
-- mandatory clarification/analyze/checklist phases;
+- mandatory clarify/analyze/checklist phases;
+- per-feature task documents when root `TASKS.md` already carries execution state;
 - extension/preset/workflow catalogs;
-- repeated multi-document restatement of the same requirements.
+- repeated restatement of requirements across artifacts.
 
-If a future workstream becomes large enough to justify full Spec Kit, adopt it only through a bounded experiment and compare token/latency overhead against this workflow.
+Full Spec Kit may be tested later only if a workstream becomes large enough to justify it and the correctness benefit is measured against its token/context overhead.
 
 ## Promotion gate
 
-Spec-Lite remains the project default unless full Spec Kit demonstrates a measurable improvement in implementation correctness or review quality that justifies its additional context and process cost.
+Spec-Lite remains the project process unless a concrete failure demonstrates that the reduced artifact set is insufficient. Process complexity is subject to the same **complexity must pay rent** rule as runtime architecture.
