@@ -139,16 +139,16 @@ Run only after M1 decision. Governing spec: `docs/specs/m2-context-memory-securi
   - Evidence: `evidence/m2/memory-precision.md`
   - Stop if: secrets/untrusted instructions become durable authority, or remote embeddings receive sensitive memory without explicit policy approval.
 
-- [ ] **T204 Define and implement provenance + deterministic egress policy**
-  - Use the minimal labels and fail-closed requirements from the M2 spec.
-  - Choose one independently supervised enforcement point (for example a local provider/egress gateway) for mandatory deny decisions.
-  - Model/hook/middleware risk signals may feed policy but may not override deterministic denial.
+- [ ] **T204 Implement provenance + localhost fail-closed egress gateway**
+  - Use the minimal labels and selected custom-provider/gateway architecture from the M2 spec.
+  - Configure a policy-controlled Hermes custom/named provider to target the gateway on loopback; keep external provider credentials outside the Hermes process/profile wherever practical.
+  - Gateway policy failures/timeouts/unavailability must deny rather than fall through to a direct provider.
   - Evidence: `evidence/m2/egress-design.md` plus configuration/code diff and rollback procedure.
-  - Stop if: the only available enforcement mechanism is a fail-open hook/middleware callback.
+  - Stop if: installed Hermes cannot use the documented custom OpenAI-compatible provider seam or mandatory deny would depend on a fail-open callback.
 
 - [ ] **T205 Run M2 acceptance/red-team suite**
-  - Run ownership uniqueness, exact-detail recovery, memory precision/injection-budget, indirect-injection, memory-poisoning and sensitive-egress tests from the M2 spec.
-  - Deliberately crash/disable advisory hooks/middleware during the egress test and prove the independent boundary still blocks the sentinel secret.
+  - Run C1–C4 and S1–S4 from the M2 spec: ownership, recovery, memory precision/budget, indirect injection, memory poisoning, fail-closed egress and gateway-bypass resistance.
+  - Deliberately crash/disable advisory hooks/middleware and separately stop the gateway; prove neither path can cause direct sensitive egress.
   - Evidence: `evidence/m2/acceptance.json` and `evidence/m2/decision.md`
   - Stop if: any mandatory deny path fails open or baseline recall/economics regress materially.
 
@@ -161,26 +161,27 @@ Run only after M1 decision. Governing spec: `docs/specs/m2-context-memory-securi
 
 Run only after M2 passes. Governing spec: `docs/specs/m3-pi-worker-rpc.md`.
 
-- [ ] **T301 Prove Pi RPC compatibility**
-  - Pin the installed Pi version and verify `--mode rpc`, `--no-session`, `--no-approve`, resource-disable flags and tool-selection flags on that version.
+- [ ] **T301 Prove Pi RPC/provider compatibility**
+  - Pin the installed Pi version and verify `--mode rpc`, `--no-session`, `--no-approve`, resource-disable flags, tool-selection flags and custom OpenAI-compatible provider configuration on that version.
   - Launch one read-only RPC worker and complete a trivial request/clean shutdown.
   - Evidence: `evidence/m3/pi-rpc-smoke.jsonl`
-  - Stop if: the bridge would need Pi internal/in-progress `AgentHarness` APIs.
+  - Stop if: the bridge would need Pi internal/in-progress `AgentHarness` APIs or an unsupported provider extension.
 
 - [ ] **T302 Establish restrictive worker launch + disposable workspace**
   - Launch with project extensions/skills/templates/themes/context files disabled and a read-only tool profile first.
-  - Create disposable git worktree/copy; ensure canonical repo is outside worker write authority.
+  - Materialize a disposable writable workspace; expose the canonical repo read-only or not at all.
   - Evidence: `evidence/m3/worker-launch.md`
   - Stop if: project-local resources execute implicitly or canonical writes remain possible.
 
-- [ ] **T303 Establish real sandbox/network/credential boundary**
-  - Select one OS/container/micro-VM containment path supported on the host.
-  - Run sentinel credential/file and denied-network probes from a malicious fixture.
+- [ ] **T303 Establish OCI worker/network/credential boundary**
+  - Use the whole-process OCI-container topology from the M3 spec (Docker/Podman-compatible). If no suitable runtime is available, stop for an explicit operator decision rather than switching sandbox architecture automatically.
+  - Worker gets no external provider credentials and no unrestricted internet; allowed model traffic reaches only the policy gateway. Record the exact network topology/runtime commands.
+  - Run sentinel host-credential/file and denied-network/direct-provider probes.
   - Evidence: `evidence/m3/sandbox.md`
-  - Stop if: containment depends only on Pi prompts, trust prompts, `--offline`, or model compliance.
+  - Stop if: worker can read unrelated host credentials, write canonical repo, reach direct external providers/internet contrary to policy, or containment depends on prompts/`--offline`/model compliance.
 
 - [ ] **T304 Implement typed Hermes↔Pi bridge contract**
-  - Implement the task/result fields from the M3 spec plus process supervision: startup timeout, task timeout, cancellation/kill, stderr capture, size limits and cleanup.
+  - Implement the task/result fields from the M3 spec plus process/container supervision: startup timeout, task timeout, cancellation/kill, stderr capture, size limits and cleanup.
   - Evidence: bridge schema/tests + `evidence/m3/bridge-contract.md`
   - Stop if: a worker crash/malformed RPC result can be interpreted as success.
 
@@ -197,7 +198,7 @@ Run only after M2 passes. Governing spec: `docs/specs/m3-pi-worker-rpc.md`.
   - Stop if: changes escape allowed paths or objective verification is missing.
 
 - [ ] **T307 Run replay/rollback/malicious-repo suite**
-  - Execute P2–P8 from the M3 spec, including project-resource isolation, canonical protection, timeout/crash, network/credential containment, read-only LSP, bounded edit and clean replay/disposal.
+  - Execute P2–P9 from the M3 spec: project-resource isolation, canonical protection, network/credential containment, gateway provider path, timeout/crash, read-only LSP, bounded edit and clean replay/disposal.
   - Evidence: `evidence/m3/acceptance.json`, `evidence/m3/rollback.md`
   - Stop if: any containment invariant fails.
 
