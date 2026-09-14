@@ -28,7 +28,7 @@ Do not create a quantization bake-off.
 3. Promote Q5_K_M only if it materially improves sustained operation **and** the compact utility smoke test shows no critical regression versus Q6.
 4. Stop once one quant meets the operating requirement; do not benchmark Q4/Q8 for completeness.
 
-For Granite 4.2-8B, current GGUFs are roughly 7.2–7.5 GB at Q6_K and 6.3–6.4 GB at Q5_K_M depending on converter. Both leave substantial headroom inside the 28 GB envelope; Q5 is therefore a throughput/headroom fallback, not the default.
+For Granite 4.2-8B, the official GGUFs are approximately 7.22 GB at Q6_K and 6.25 GB at Q5_K_M. Both leave substantial headroom inside the 28 GB envelope; Q5 is therefore a throughput/headroom fallback, not the default.
 
 ## Minimal qualification profile
 
@@ -82,7 +82,7 @@ Why it is first:
 - first-party GGUF and direct llama.cpp/Hermes usage guidance;
 - 8B and 30B variants receive IBM's full agentic-RL stage in real sandboxed tool environments;
 - broad published evidence across coding, tool use, reasoning and long context;
-- Q6 weight footprint is only ~7.2–7.5 GB.
+- Q6 weight footprint is only ~7.22 GB.
 
 If Q1–Q3 pass: **promote and stop model selection**.
 
@@ -104,6 +104,7 @@ The original 2–4B fleet remains available only as a future specialist shelf wh
 
 ## Explicit exclusions at this gate
 
+- `ibm-granite/granite-4.2-30b` Q5/Q6: official Q5_K_M is ~20.8 GB and Q6_K ~24 GB, so the weight files technically fit the nominal 28 GB envelope, but leave only ~7.2 GB/~4 GB respectively for context/KV/runtime. The 30B is materially stronger in IBM's published agentic benchmarks, but no credible sustained Apple-laptop evidence was found that justifies spending the initial qualification budget on it. Revisit only if both active 8–9B paths fail or a target-Mac measurement from a comparable setup materially changes this risk assessment.
 - `Qwen3.8-27B` Q6: weights consume most of the 28 GB envelope before sustained-context/runtime overhead.
 - `Qwen3.8-Flash-Next`: far above the envelope even with n-gram/PLE disk offload; support is recent/evolving.
 - `DeepSeek-V4.1-Flash`: datacenter-scale stored weights and Engram tables; not a boring stock-Metal deployment.
@@ -122,7 +123,7 @@ Promote the **first model + quant in the decision tree that passes Q1–Q3**. Do
 
 ## Evidence output
 
-Store one compact JSON/Markdown result under `evidence/local-model/` containing:
+Store one compact local JSON/Markdown result under `evidence/local-model/` containing:
 
 - machine identifier without secrets;
 - macOS + llama.cpp commit/build;
@@ -132,3 +133,5 @@ Store one compact JSON/Markdown result under `evidence/local-model/` containing:
 - memory/context settings;
 - Q1–Q3 measurements;
 - pass/reject decision and reason.
+
+`evidence/` is untracked by default under `docs/evidence-policy.md`; publish only sanitized summaries.
