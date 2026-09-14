@@ -70,20 +70,35 @@ Use a compact fixed set of 10–20 examples covering only the intended local job
 
 **Pass:** no critical evidence omissions in the safety-critical examples and schema-valid structured output at the declared threshold.
 
-## Candidate policy
+## Candidate decision tree
 
-To minimize decision surface, at most **two full candidates** are active initially:
+Do **not** benchmark three models in parallel.
 
-1. `empero-ai/Qwen3.8-9B-Distill` — primary challenger; Q6 reference, Q5_K_M conditional production option.
-2. `Qwen/Qwen3.5-9B` — conservative control; same quantization policy.
+### Step A — primary
 
-Do not add another model unless one of the current candidates is rejected or an architecture/model release supplies compelling new evidence against this shortlist.
+Start with `empero-ai/Qwen3.8-9B-Distill` Q6_K.
+
+- If Q1–Q3 pass comfortably: **promote and stop model selection**.
+- If quality passes but sustained throughput/headroom is limiting: run the same candidate at Q5_K_M.
+- If Q5 passes: **promote and stop**.
+
+### Step B — triggered efficiency challenger
+
+Only if the Empero candidate fails primarily on sustained throughput/latency/runtime behavior, qualify `google/gemma-4-E4B-it`.
+
+Rationale: Gemma 4 E4B is an official on-device model with ~8B stored parameters but ~4.5B effective compute and Per-Layer Embeddings (PLE), plus stock llama.cpp Gemma 4 support. It is a useful architecture challenger specifically for efficiency. Run Q6 first and Q5_K_M only under the same quantization trigger.
+
+### Step C — quality fallback
+
+Only if Empero fails the utility-quality gate rather than the efficiency gate, qualify official `Qwen/Qwen3.5-9B` Q6_K as the conservative fallback because it has broader published coding/tool/long-context evidence than the community distill.
+
+This failure-directed decision tree keeps the active benchmark surface to **one model at a time**.
 
 ## Explicit exclusions at this gate
 
-- `Qwen3.8-27B` Q6: weights alone consume roughly 23–24 GB, leaving inadequate margin inside the 28 GB service envelope for sustained-context operation; public M4 Max evidence also shows modest single-stream decode in at least one laptop configuration.
+- `Qwen3.8-27B` Q6: weights alone consume roughly 23–24 GB, leaving inadequate margin inside the 28 GB service envelope for sustained-context operation.
 - `Qwen3.8-Flash-Next`: far above the envelope even with n-gram/PLE disk offload; llama.cpp support is recent/evolving and the resident compute weights remain much too large.
-- `DeepSeek-V4.1-Flash`: hundreds of billions of stored parameters plus large Engram tables; current consumer inference relies on substantial host/NVMe streaming and non-stock implementations.
+- `DeepSeek-V4.1-Flash`: hundreds of billions of stored parameters plus large Engram tables; current consumer inference relies on substantial host/NVMe streaming and specialized implementations.
 - MLX-only variants: out of scope by decision.
 - Q4/IQ and Q8/BF16 variants: out of scope unless a future ADR reopens them.
 - uncensored/abliterated variants: no demonstrated benefit for the intended utility role and add avoidable provenance/safety variability.
@@ -94,7 +109,7 @@ MTP/DSpark/EAGLE-style acceleration is NOT part of initial admission. Establish 
 
 ## Promotion rule
 
-The promoted utility configuration is the **simplest model + quant that passes Q1–Q3**. Do not spend additional benchmark budget looking for marginal gains after a configuration meets the operational and quality requirements unless observed production telemetry later exposes a concrete deficiency.
+The promoted utility configuration is the **first model + quant in the decision tree that passes Q1–Q3**. Do not continue benchmark exploration after the operating requirement is met unless production telemetry later exposes a concrete deficiency.
 
 ## Evidence output
 
